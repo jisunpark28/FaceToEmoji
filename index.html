@@ -56,8 +56,26 @@
                 <option value="emoji">Emoji</option>
                 <option value="blur">Blur</option>
               </select>
-              <button id="applyDefaultBtn" type="button">Apply to All Faces</button>
+              <button id="applyDefaultBtn" type="button">Apply Style to All Faces</button>
             </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="defaultEmojiOpacityRange">Default Emoji Opacity</label>
+                <span id="defaultEmojiOpacityValue" class="slider-value">95%</span>
+              </div>
+              <input id="defaultEmojiOpacityRange" type="range" min="10" max="100" value="95" step="1" />
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="defaultBlurOpacityRange">Default Blur Opacity</label>
+                <span id="defaultBlurOpacityValue" class="slider-value">90%</span>
+              </div>
+              <input id="defaultBlurOpacityRange" type="range" min="10" max="100" value="90" step="1" />
+            </div>
+
+            <button id="applyOpacityDefaultsBtn" type="button">Apply Opacity to All Faces</button>
           </div>
 
           <div class="selected-panel control-group">
@@ -70,6 +88,15 @@
                 <option value="blur">Blur</option>
               </select>
             </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="selectedOpacityRange">Selected Effect Opacity</label>
+                <span id="selectedOpacityValue" class="slider-value">--</span>
+              </div>
+              <input id="selectedOpacityRange" type="range" min="10" max="100" value="100" step="1" />
+            </div>
+
             <label class="checkbox-row">
               <input id="excludeCheckbox" type="checkbox" />
               Exclude this face (leave unchanged)

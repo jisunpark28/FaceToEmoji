@@ -224,6 +224,32 @@ button.active {
   margin-top: 0;
 }
 
+
+.slider-group {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.84rem;
+}
+
+.slider-value {
+  color: #2f58f0;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -252,6 +278,14 @@ button.active {
 }
 
 @media (max-width: 760px) {
+  .slider-header {
+    font-size: 0.8rem;
+  }
+
+  .slider-value {
+    font-size: 0.78rem;
+  }
+
   .app-shell {
     padding: 18px 11px 28px;
   }

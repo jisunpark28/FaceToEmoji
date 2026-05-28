@@ -17,6 +17,8 @@ const state = {
   faces: [],
   selectedFaceId: null,
   defaultMode: "emoji",
+  defaultEmojiOpacity: 0.95,
+  defaultBlurOpacity: 0.9,
   manualMode: false,
   drawing: false,
   drawStart: null,
@@ -32,8 +34,15 @@ const refs = {
   clearBtn: document.getElementById("clearBtn"),
   defaultModeSelect: document.getElementById("defaultModeSelect"),
   applyDefaultBtn: document.getElementById("applyDefaultBtn"),
+  defaultEmojiOpacityRange: document.getElementById("defaultEmojiOpacityRange"),
+  defaultEmojiOpacityValue: document.getElementById("defaultEmojiOpacityValue"),
+  defaultBlurOpacityRange: document.getElementById("defaultBlurOpacityRange"),
+  defaultBlurOpacityValue: document.getElementById("defaultBlurOpacityValue"),
+  applyOpacityDefaultsBtn: document.getElementById("applyOpacityDefaultsBtn"),
   selectedFaceMeta: document.getElementById("selectedFaceMeta"),
   selectedModeSelect: document.getElementById("selectedModeSelect"),
+  selectedOpacityRange: document.getElementById("selectedOpacityRange"),
+  selectedOpacityValue: document.getElementById("selectedOpacityValue"),
   excludeCheckbox: document.getElementById("excludeCheckbox"),
   removeFaceBtn: document.getElementById("removeFaceBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
@@ -83,6 +92,62 @@ function faceLabelMode(face) {
   return face.mode === "emoji" ? `${face.emoji} Emoji` : "Blur";
 }
 
+function clampOpacity(value) {
+  if (Number.isNaN(value)) {
+    return 1;
+  }
+  return Math.min(1, Math.max(0.1, value));
+}
+
+function opacityToPercent(opacity) {
+  return Math.round(clampOpacity(opacity) * 100);
+}
+
+function readFaceOpacityForMode(face, mode = face.mode) {
+  if (!face) {
+    return 1;
+  }
+
+  if (mode === "emoji") {
+    return clampOpacity(face.emojiOpacity ?? state.defaultEmojiOpacity);
+  }
+
+  return clampOpacity(face.blurOpacity ?? state.defaultBlurOpacity);
+}
+
+function setFaceOpacityForMode(face, mode, opacity) {
+  if (!face) {
+    return;
+  }
+
+  if (mode === "emoji") {
+    face.emojiOpacity = clampOpacity(opacity);
+    return;
+  }
+
+  face.blurOpacity = clampOpacity(opacity);
+}
+
+function syncDefaultOpacityControls() {
+  refs.defaultEmojiOpacityRange.value = String(opacityToPercent(state.defaultEmojiOpacity));
+  refs.defaultBlurOpacityRange.value = String(opacityToPercent(state.defaultBlurOpacity));
+  refs.defaultEmojiOpacityValue.textContent = `${opacityToPercent(state.defaultEmojiOpacity)}%`;
+  refs.defaultBlurOpacityValue.textContent = `${opacityToPercent(state.defaultBlurOpacity)}%`;
+}
+
+function syncSelectedOpacityControl(face) {
+  if (!face) {
+    refs.selectedOpacityRange.disabled = true;
+    refs.selectedOpacityValue.textContent = "--";
+    return;
+  }
+
+  refs.selectedOpacityRange.disabled = false;
+  const opacityPercent = opacityToPercent(readFaceOpacityForMode(face, face.mode));
+  refs.selectedOpacityRange.value = String(opacityPercent);
+  refs.selectedOpacityValue.textContent = `${opacityPercent}%`;
+}
+
 function getSelectedFace() {
   return state.faces.find((face) => face.id === state.selectedFaceId) || null;
 }
@@ -96,6 +161,7 @@ function syncSelectedFacePanel() {
     refs.excludeCheckbox.disabled = true;
     refs.removeFaceBtn.disabled = true;
     refs.excludeCheckbox.checked = false;
+    syncSelectedOpacityControl(null);
     return;
   }
 
@@ -109,7 +175,9 @@ function syncSelectedFacePanel() {
   const expressionText = selected.manual
     ? "Manually added"
     : `Expression: ${formatExpression(selected.expression)}`;
-  refs.selectedFaceMeta.textContent = `Face #${faceIndex} / ${expressionText} / Style: ${faceLabelMode(selected)} / ${selected.excluded ? "Excluded" : "Applied"}`;
+  const opacityPercent = opacityToPercent(readFaceOpacityForMode(selected, selected.mode));
+  refs.selectedFaceMeta.textContent = `Face #${faceIndex} / ${expressionText} / Style: ${faceLabelMode(selected)} / Opacity: ${opacityPercent}% / ${selected.excluded ? "Excluded" : "Applied"}`;
+  syncSelectedOpacityControl(selected);
 }
 
 function syncCanvasStageSize(imageWidth) {
@@ -133,8 +201,10 @@ function drawEmojiSticker(ctx, face) {
   const cy = y + height / 2;
   const radius = Math.max(18, Math.min(width, height) * 0.55);
   const fontSize = Math.max(20, Math.min(width, height) * 0.86);
+  const effectOpacity = readFaceOpacityForMode(face, "emoji");
 
   ctx.save();
+  ctx.globalAlpha = effectOpacity;
   ctx.fillStyle = "rgba(255,255,255,0.45)";
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -165,9 +235,11 @@ function clipRoundedRect(ctx, x, y, w, h, radius) {
 function drawBlurFace(ctx, face) {
   const { x, y, width, height } = face.box;
   const blur = Math.max(8, Math.floor(Math.min(width, height) * 0.22));
+  const effectOpacity = readFaceOpacityForMode(face, "blur");
   ctx.save();
   clipRoundedRect(ctx, x, y, width, height, Math.min(width, height) * 0.25);
   ctx.clip();
+  ctx.globalAlpha = effectOpacity;
   ctx.filter = `blur(${blur}px)`;
   ctx.drawImage(state.image, x, y, width, height, x, y, width, height);
   ctx.restore();
@@ -206,7 +278,8 @@ function drawFaceOutline(face, index) {
   overlayCtx.lineWidth = lineWidth;
   overlayCtx.strokeRect(x, y, width, height);
 
-  const label = `${index + 1} · ${face.mode === "emoji" ? face.emoji : "BLUR"} ${face.excluded ? "(EXCLUDED)" : ""}`;
+  const effectOpacity = opacityToPercent(readFaceOpacityForMode(face, face.mode));
+  const label = `${index + 1} · ${face.mode === "emoji" ? face.emoji : "BLUR"} ${effectOpacity}% ${face.excluded ? "(EXCLUDED)" : ""}`;
   overlayCtx.font = "16px sans-serif";
   const metrics = overlayCtx.measureText(label);
   const labelWidth = metrics.width + 10;
@@ -276,6 +349,8 @@ function createFace(box, expression = "neutral", manual = false) {
     manual,
     expression: normalizedExpression,
     emoji: expressionToEmoji[normalizedExpression],
+    emojiOpacity: state.defaultEmojiOpacity,
+    blurOpacity: state.defaultBlurOpacity,
   };
 }
 
@@ -534,6 +609,16 @@ function setupControlEvents() {
     state.defaultMode = event.target.value;
   });
 
+  refs.defaultEmojiOpacityRange.addEventListener("input", (event) => {
+    state.defaultEmojiOpacity = clampOpacity(Number(event.target.value) / 100);
+    refs.defaultEmojiOpacityValue.textContent = `${opacityToPercent(state.defaultEmojiOpacity)}%`;
+  });
+
+  refs.defaultBlurOpacityRange.addEventListener("input", (event) => {
+    state.defaultBlurOpacity = clampOpacity(Number(event.target.value) / 100);
+    refs.defaultBlurOpacityValue.textContent = `${opacityToPercent(state.defaultBlurOpacity)}%`;
+  });
+
   refs.applyDefaultBtn.addEventListener("click", () => {
     if (state.faces.length === 0) {
       setStatus("There are no faces to apply this style to.");
@@ -544,12 +629,40 @@ function setupControlEvents() {
     setStatus(`Updated all faces to ${state.defaultMode === "emoji" ? "Emoji" : "Blur"}.`);
   });
 
+  refs.applyOpacityDefaultsBtn.addEventListener("click", () => {
+    if (state.faces.length === 0) {
+      setStatus("There are no faces to apply opacity settings to.");
+      return;
+    }
+
+    state.faces = state.faces.map((face) => ({
+      ...face,
+      emojiOpacity: state.defaultEmojiOpacity,
+      blurOpacity: state.defaultBlurOpacity,
+    }));
+    renderAll();
+    setStatus("Applied default emoji/blur opacity to all faces.");
+  });
+
   refs.selectedModeSelect.addEventListener("change", (event) => {
     const selected = getSelectedFace();
     if (!selected) {
       return;
     }
     selected.mode = event.target.value;
+    syncSelectedOpacityControl(selected);
+    renderAll();
+  });
+
+  refs.selectedOpacityRange.addEventListener("input", (event) => {
+    const selected = getSelectedFace();
+    if (!selected) {
+      return;
+    }
+
+    const opacity = clampOpacity(Number(event.target.value) / 100);
+    setFaceOpacityForMode(selected, selected.mode, opacity);
+    refs.selectedOpacityValue.textContent = `${opacityToPercent(opacity)}%`;
     renderAll();
   });
 
@@ -605,9 +718,12 @@ async function init() {
   refs.canvasStage.style.width = "100%";
   refs.overlayCanvas.style.cursor = "pointer";
   refs.selectedModeSelect.disabled = true;
+  refs.selectedOpacityRange.disabled = true;
   refs.excludeCheckbox.disabled = true;
   refs.removeFaceBtn.disabled = true;
 
+  syncDefaultOpacityControls();
+  syncSelectedOpacityControl(null);
   setupControlEvents();
   setupCanvasInteractions();
   handleDropZoneEvents();
