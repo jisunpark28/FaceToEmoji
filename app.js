@@ -752,28 +752,90 @@ function buildDraftRect(start, point, lockSquare = false) {
   return { x, y, width, height };
 }
 
-function loadImageFromFile(file) {
+function isLikelyImageFile(file) {
+  if (!file) {
+    return false;
+  }
+  if (file.type && file.type.startsWith("image/")) {
+    return true;
+  }
+  return /\.(png|jpe?g|webp|gif|bmp|svg|avif|heic|heif)$/i.test(file.name || "");
+}
+
+function loadImageElement(source) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
     const image = new Image();
     image.onload = () => {
-      URL.revokeObjectURL(url);
       resolve(image);
     };
     image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Unable to read image file."));
+      reject(new Error("Unable to decode image source."));
     };
-    image.src = url;
+    image.src = source;
   });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(String(reader.result || ""));
+    };
+    reader.onerror = () => {
+      reject(new Error("Unable to read file as data URL."));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadImageFromFile(file) {
+  let lastError = null;
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await loadImageElement(objectUrl);
+  } catch (error) {
+    lastError = error;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Unable to create bitmap canvas context.");
+      }
+      ctx.drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+      return canvas;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    return await loadImageElement(dataUrl);
+  } catch (error) {
+    lastError = error;
+  }
+
+  throw lastError || new Error("Unable to decode image file.");
 }
 
 async function onFileSelected(file) {
   if (!file) {
     return;
   }
-  if (!file.type.startsWith("image/")) {
-    setStatus("Please upload an image file.", true);
+  if (!isLikelyImageFile(file)) {
+    setStatus("Please upload an image file (JPG, PNG, WEBP).", true);
     return;
   }
 
@@ -783,7 +845,8 @@ async function onFileSelected(file) {
     image = await loadImageFromFile(file);
   } catch (error) {
     console.error(error);
-    setStatus("Image upload failed. Please try another image format.", true);
+    const typeLabel = file.type || "unknown";
+    setStatus(`Image upload failed (${typeLabel}). Try JPG or PNG.`, true);
     refs.imageInput.value = "";
     return;
   }
