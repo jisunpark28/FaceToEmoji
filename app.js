@@ -69,6 +69,7 @@ const refs = {
   deleteSelectedBtn: document.getElementById("deleteSelectedBtn"),
   selectedFaceMeta: document.getElementById("selectedFaceMeta"),
   downloadBtn: document.getElementById("downloadBtn"),
+  titleResetBtn: document.getElementById("titleResetBtn"),
 };
 
 const previewCtx = refs.previewCanvas.getContext("2d");
@@ -796,6 +797,16 @@ async function onFileSelected(file) {
   }
 }
 
+function setupTitleReset() {
+  if (!refs.titleResetBtn) {
+    return;
+  }
+
+  refs.titleResetBtn.addEventListener("click", () => {
+    clearLoadedImage();
+  });
+}
+
 function setupQuickUploadArea() {
   refs.imageInput.addEventListener("change", (event) => {
     const [file] = event.target.files || [];
@@ -1290,6 +1301,7 @@ async function init() {
   setupQuickUploadArea();
   setupControlEvents();
   setupCanvasInteractions();
+  setupTitleReset();
 
   window.addEventListener("resize", () => {
     if (!state.image) {

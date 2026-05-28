@@ -36,6 +36,28 @@ body {
   font-size: 2rem;
 }
 
+.title-reset-btn {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.title-reset-btn:hover {
+  color: #274ecf;
+}
+
+.title-reset-btn:focus-visible {
+  outline: 2px solid #7aa2ff;
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
 .hero p {
   margin: 8px 0 0;
   color: var(--muted);
