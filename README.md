@@ -1,43 +1,30 @@
 # FaceToEmoji
 
-FaceToEmoji is a clean one-page web app that lets users upload photos, automatically detect faces, and replace each detected face with an expression-based emoji sticker or blur effect.
+FaceToEmoji is a simple web app that helps you hide faces in photos with emoji overlays.
+It supports automatic face detection, manual face editing, and one-click download.
 
-## Features
+## What it does
 
-- Drag and drop image upload from local folders (or file picker)
-- Automatic face detection after upload
-- Auto expression analysis and best-match emoji selection
-- Manual face selection for missed detections (draw box mode)
-- Click-to-exclude faces from processing
-- Per-face mode switch: Emoji or Blur
-- Download processed image to local PC
+- Upload an image (click or drag-and-drop)
+- Detect faces automatically
+- Add or adjust faces manually
+- Move and resize selected emoji with the mouse
+- Change emoji style, opacity, and size
+- Download the edited image
 
-## Tech Stack
+## Tech
 
-- Vanilla HTML/CSS/JavaScript
-- [face-api.js](https://github.com/justadudewhohacks/face-api.js) for face detection and expression inference
-- Client-side processing with HTML Canvas (no server required)
+- Vanilla HTML, CSS, JavaScript
+- [face-api.js](https://github.com/justadudewhohacks/face-api.js)
 
-## Local Run
-
-Because browsers can block local model loading with `file://`, run with a small local server:
+## Run locally
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then open:
+Open: `http://localhost:8080`
 
-```text
-http://localhost:8080
-```
+## Deploy
 
-## Deployment
-
-GitHub Pages workflow is included at:
-
-```text
-.github/workflows/deploy-pages.yml
-```
-
-After merging to `main`, enable Pages in repository settings (if not already enabled), and the site deploys automatically.
+This project is static and can be deployed easily on Vercel, GitHub Pages, or any static hosting.
