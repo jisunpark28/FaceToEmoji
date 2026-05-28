@@ -1,5 +1,10 @@
 const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
 const BLUR_CIRCLE_VALUE = "__blur_circle__";
+const DETECTION_PASSES = [
+  { inputSize: 608, scoreThreshold: 0.18 },
+  { inputSize: 512, scoreThreshold: 0.22 },
+  { inputSize: 416, scoreThreshold: 0.28 },
+];
 
 const expressionToEmoji = {
   neutral: "🙂",
@@ -112,6 +117,112 @@ function pickExpression(expressions = {}) {
   });
 
   return chosen;
+}
+
+function getBoxCenter(box) {
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
+function getBoxIou(boxA, boxB) {
+  const left = Math.max(boxA.x, boxB.x);
+  const top = Math.max(boxA.y, boxB.y);
+  const right = Math.min(boxA.x + boxA.width, boxB.x + boxB.width);
+  const bottom = Math.min(boxA.y + boxA.height, boxB.y + boxB.height);
+  const intersectionWidth = Math.max(0, right - left);
+  const intersectionHeight = Math.max(0, bottom - top);
+  const intersectionArea = intersectionWidth * intersectionHeight;
+
+  if (intersectionArea === 0) {
+    return 0;
+  }
+
+  const areaA = Math.max(1, boxA.width * boxA.height);
+  const areaB = Math.max(1, boxB.width * boxB.height);
+  const union = areaA + areaB - intersectionArea;
+  return union > 0 ? intersectionArea / union : 0;
+}
+
+function areBoxesDuplicate(boxA, boxB) {
+  const iou = getBoxIou(boxA, boxB);
+  if (iou >= 0.35) {
+    return true;
+  }
+
+  const centerA = getBoxCenter(boxA);
+  const centerB = getBoxCenter(boxB);
+  const centerDistance = Math.hypot(centerA.x - centerB.x, centerA.y - centerB.y);
+  const minSize = Math.max(8, Math.min(boxA.width, boxA.height, boxB.width, boxB.height));
+  return centerDistance <= minSize * 0.42;
+}
+
+function dedupeDetections(detections) {
+  const sorted = [...detections].sort((a, b) => b.score - a.score);
+  const merged = [];
+
+  sorted.forEach((candidate) => {
+    if (candidate.box.width < 10 || candidate.box.height < 10) {
+      return;
+    }
+
+    const hasDuplicate = merged.some((kept) => areBoxesDuplicate(kept.box, candidate.box));
+    if (!hasDuplicate) {
+      merged.push(candidate);
+    }
+  });
+
+  return merged;
+}
+
+function buildUpscaledDetectionSource(image) {
+  const longEdge = Math.max(image.width, image.height);
+  const upscale = Math.min(2, 2600 / longEdge);
+  if (upscale <= 1.05) {
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(image.width * upscale);
+  canvas.height = Math.round(image.height * upscale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return { canvas, scale: upscale };
+}
+
+async function runDetectionPasses(source, sourceScale = 1) {
+  let allDetections = [];
+
+  for (const pass of DETECTION_PASSES) {
+    const options = new faceapi.TinyFaceDetectorOptions({
+      inputSize: pass.inputSize,
+      scoreThreshold: pass.scoreThreshold,
+    });
+
+    try {
+      const detections = await faceapi.detectAllFaces(source, options).withFaceExpressions();
+      const normalized = detections.map((det) => ({
+        box: {
+          x: det.detection.box.x / sourceScale,
+          y: det.detection.box.y / sourceScale,
+          width: det.detection.box.width / sourceScale,
+          height: det.detection.box.height / sourceScale,
+        },
+        expressions: det.expressions,
+        score: Number(det.detection.score ?? 0),
+      }));
+
+      allDetections = allDetections.concat(normalized);
+    } catch (error) {
+      console.warn("Detection pass failed", pass, error);
+    }
+  }
+
+  return allDetections;
 }
 
 function getSelectedFace() {
@@ -392,22 +503,23 @@ async function detectFaces() {
     return;
   }
 
-  setStatus("Detecting faces...");
+  setStatus("Detecting faces (multi-pass for small faces)...");
   try {
-    const options = new faceapi.TinyFaceDetectorOptions({
-      inputSize: 416,
-      scoreThreshold: 0.35,
-    });
+    let detectionCandidates = await runDetectionPasses(state.image, 1);
 
-    const detections = await faceapi
-      .detectAllFaces(state.image, options)
-      .withFaceExpressions();
+    const upscaledSource = buildUpscaledDetectionSource(state.image);
+    if (upscaledSource) {
+      const upscaledDetections = await runDetectionPasses(upscaledSource.canvas, upscaledSource.scale);
+      detectionCandidates = detectionCandidates.concat(upscaledDetections);
+    }
 
-    state.faces = detections.map((det) => {
+    const mergedDetections = dedupeDetections(detectionCandidates);
+
+    state.faces = mergedDetections.map((det) => {
       const expression = pickExpression(det.expressions);
       const emoji = expressionToEmoji[expression] || state.defaultEmoji;
       return createFace({
-        box: det.detection.box,
+        box: det.box,
         expression,
         emoji,
         opacity: state.defaultOpacity,
