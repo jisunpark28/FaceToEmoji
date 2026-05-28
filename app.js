@@ -37,7 +37,6 @@ const refs = {
   excludeCheckbox: document.getElementById("excludeCheckbox"),
   removeFaceBtn: document.getElementById("removeFaceBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
-  faceList: document.getElementById("faceList"),
   previewCanvas: document.getElementById("previewCanvas"),
   overlayCanvas: document.getElementById("overlayCanvas"),
   canvasStage: document.getElementById("canvasStage"),
@@ -92,7 +91,7 @@ function syncSelectedFacePanel() {
   const selected = getSelectedFace();
 
   if (!selected) {
-    refs.selectedFaceMeta.textContent = "Select a face to edit details";
+    refs.selectedFaceMeta.textContent = "Select a face directly on the preview";
     refs.selectedModeSelect.disabled = true;
     refs.excludeCheckbox.disabled = true;
     refs.removeFaceBtn.disabled = true;
@@ -106,50 +105,11 @@ function syncSelectedFacePanel() {
   refs.selectedModeSelect.value = selected.mode;
   refs.excludeCheckbox.checked = selected.excluded;
 
+  const faceIndex = state.faces.findIndex((face) => face.id === selected.id) + 1;
   const expressionText = selected.manual
     ? "Manually added"
     : `Expression: ${formatExpression(selected.expression)}`;
-  refs.selectedFaceMeta.textContent = `${expressionText} / Style: ${faceLabelMode(selected)} / ${selected.excluded ? "Excluded" : "Applied"}`;
-}
-
-function renderFaceList() {
-  refs.faceList.innerHTML = "";
-
-  if (state.faces.length === 0) {
-    const emptyItem = document.createElement("li");
-    emptyItem.className = "empty";
-    emptyItem.textContent = "No faces detected yet.";
-    refs.faceList.appendChild(emptyItem);
-    return;
-  }
-
-  state.faces.forEach((face, index) => {
-    const item = document.createElement("li");
-    item.className = "face-item";
-    if (face.id === state.selectedFaceId) {
-      item.classList.add("selected");
-    }
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = `Face ${index + 1} · ${faceLabelMode(face)} ${face.excluded ? "(Excluded)" : ""}`;
-    button.addEventListener("click", () => {
-      state.selectedFaceId = face.id;
-      syncSelectedFacePanel();
-      renderFaceList();
-      drawOverlay();
-    });
-
-    const meta = document.createElement("p");
-    meta.className = "meta";
-    meta.textContent = face.manual
-      ? "Manually selected face area"
-      : `Detected expression: ${formatExpression(face.expression)}`;
-
-    item.appendChild(button);
-    item.appendChild(meta);
-    refs.faceList.appendChild(item);
-  });
+  refs.selectedFaceMeta.textContent = `Face #${faceIndex} / ${expressionText} / Style: ${faceLabelMode(selected)} / ${selected.excluded ? "Excluded" : "Applied"}`;
 }
 
 function syncCanvasStageSize(imageWidth) {
@@ -287,7 +247,6 @@ function drawOverlay() {
 function renderAll() {
   drawPreview();
   drawOverlay();
-  renderFaceList();
   syncSelectedFacePanel();
 }
 
@@ -390,10 +349,11 @@ function toCanvasPoint(pointerEvent) {
 function setManualMode(active) {
   state.manualMode = active;
   refs.manualBtn.classList.toggle("active", active);
+  refs.overlayCanvas.style.cursor = active ? "crosshair" : "pointer";
   if (active) {
-    setStatus("Manual mode on: drag to add a missed face.");
+    setStatus("Manual mode on: drag on the preview to add a missed face.");
   } else {
-    setStatus("Normal mode on: tap/click a face to exclude or restore.");
+    setStatus("Normal mode on: click a face in the preview to select it.");
   }
 }
 
@@ -430,8 +390,8 @@ async function onFileSelected(file) {
     state.faces = [];
     state.selectedFaceId = null;
     state.draftRect = null;
-    setManualMode(false);
     resizeCanvases(image.width, image.height);
+    setManualMode(false);
     renderAll();
     await detectFaces();
   } catch (error) {
@@ -463,18 +423,26 @@ function setupCanvasInteractions() {
     if (!state.image || state.manualMode || state.drawing) {
       return;
     }
+
     const point = toCanvasPoint(event);
     const targetFace = findFaceAtPoint(point.x, point.y);
+
     if (!targetFace) {
+      state.selectedFaceId = null;
+      renderAll();
+      setStatus("No face selected. Click a face box in the preview.");
       return;
     }
-    targetFace.excluded = !targetFace.excluded;
+
     state.selectedFaceId = targetFace.id;
-    setStatus(
-      targetFace.excluded
-        ? "Selected face is now excluded."
-        : "Selected face is restored.",
-    );
+
+    if (event.shiftKey || event.altKey) {
+      targetFace.excluded = !targetFace.excluded;
+      setStatus(targetFace.excluded ? "Selected face is now excluded." : "Selected face is restored.");
+    } else {
+      setStatus("Face selected. Adjust options in the right panel.");
+    }
+
     renderAll();
   });
 
@@ -635,6 +603,7 @@ async function loadModels() {
 
 async function init() {
   refs.canvasStage.style.width = "100%";
+  refs.overlayCanvas.style.cursor = "pointer";
   refs.selectedModeSelect.disabled = true;
   refs.excludeCheckbox.disabled = true;
   refs.removeFaceBtn.disabled = true;

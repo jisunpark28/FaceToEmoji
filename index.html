@@ -13,35 +13,57 @@
         <p>Turn every face in your photo into emoji magic, instantly.</p>
       </header>
 
-      <main class="layout">
-        <section class="card controls">
-          <h2>Upload Photo</h2>
-          <label id="dropzone" class="dropzone" for="imageInput">
-            <input id="imageInput" type="file" accept="image/*" />
-            <span>Drag & drop an image here, or tap to choose a file</span>
-          </label>
+      <main class="workspace">
+        <section class="card editor">
+          <h2>Live Preview</h2>
+          <p class="muted">
+            Click a face to select it. Use Shift/Alt + click to quickly exclude or restore.
+          </p>
+          <div id="canvasContainer" class="canvas-container">
+            <div id="canvasStage" class="canvas-stage">
+              <canvas id="previewCanvas"></canvas>
+              <canvas id="overlayCanvas"></canvas>
+            </div>
+          </div>
+        </section>
 
-          <p id="statusText" class="status">Loading AI models...</p>
+        <aside class="card controls">
+          <h2>Quick Controls</h2>
 
-          <div class="button-row">
-            <button id="detectBtn" type="button">Auto Detect Faces</button>
-            <button id="manualBtn" type="button">Add Face Manually</button>
-            <button id="clearBtn" type="button">Reset Faces</button>
+          <div class="control-group">
+            <h3>1) Upload</h3>
+            <label id="dropzone" class="dropzone" for="imageInput">
+              <input id="imageInput" type="file" accept="image/*" />
+              <span>Drag & drop an image here, or tap to choose a file</span>
+            </label>
+            <p id="statusText" class="status">Loading AI models...</p>
           </div>
 
-          <div class="field-group">
-            <label for="defaultModeSelect">Default Face Style</label>
-            <select id="defaultModeSelect">
-              <option value="emoji">Emoji</option>
-              <option value="blur">Blur</option>
-            </select>
-            <button id="applyDefaultBtn" type="button">Apply to All Faces</button>
+          <div class="control-group">
+            <h3>2) Detection</h3>
+            <div class="button-row">
+              <button id="detectBtn" type="button">Auto Detect Faces</button>
+              <button id="manualBtn" type="button">Add Face Manually</button>
+              <button id="clearBtn" type="button">Reset Faces</button>
+            </div>
           </div>
 
-          <div class="selected-panel">
-            <h3>Selected Face</h3>
-            <p id="selectedFaceMeta" class="muted">Select a face to edit details</p>
-            <div class="field-group">
+          <div class="control-group">
+            <h3>3) Bulk Style</h3>
+            <div class="field-group compact">
+              <label for="defaultModeSelect">Default Face Style</label>
+              <select id="defaultModeSelect">
+                <option value="emoji">Emoji</option>
+                <option value="blur">Blur</option>
+              </select>
+              <button id="applyDefaultBtn" type="button">Apply to All Faces</button>
+            </div>
+          </div>
+
+          <div class="selected-panel control-group">
+            <h3>4) Selected Face</h3>
+            <p id="selectedFaceMeta" class="muted">Select a face directly on the preview</p>
+            <div class="field-group compact">
               <label for="selectedModeSelect">Face Style</label>
               <select id="selectedModeSelect">
                 <option value="emoji">Emoji</option>
@@ -56,25 +78,7 @@
           </div>
 
           <button id="downloadBtn" type="button" class="primary">Download Edited Image</button>
-        </section>
-
-        <section class="card editor">
-          <h2>Live Preview</h2>
-          <p class="muted">In normal mode, tap/click a face to exclude or restore it.</p>
-          <div id="canvasContainer" class="canvas-container">
-            <div id="canvasStage" class="canvas-stage">
-              <canvas id="previewCanvas"></canvas>
-              <canvas id="overlayCanvas"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <section class="card faces">
-          <h2>Detected Faces</h2>
-          <ul id="faceList" class="face-list">
-            <li class="empty">No faces detected yet.</li>
-          </ul>
-        </section>
+        </aside>
       </main>
     </div>
 
