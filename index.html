@@ -66,9 +66,17 @@
               </div>
               <input id="opacityRange" type="range" min="0" max="100" value="100" step="1" />
             </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="sizeRange">Size</label>
+                <span id="sizeValue" class="slider-value">100%</span>
+              </div>
+              <input id="sizeRange" type="range" min="40" max="220" value="100" step="1" />
+            </div>
           </div>
 
-          <p id="selectedFaceMeta" class="muted">Click an emoji on preview to adjust only that one. Mouse wheel fine-tunes selected opacity.</p>
+          <p id="selectedFaceMeta" class="muted">Click an emoji on preview to adjust only that one. Opacity/Size controls affect selected emoji only.</p>
 
           <button id="downloadBtn" type="button" class="primary">Download Edited Image</button>
         </aside>

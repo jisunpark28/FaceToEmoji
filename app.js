@@ -22,6 +22,7 @@ const state = {
   draftRect: null,
   defaultEmoji: "🙂",
   defaultOpacity: 1,
+  defaultSize: 1,
 };
 
 const refs = {
@@ -41,6 +42,8 @@ const refs = {
   emojiSelect: document.getElementById("emojiSelect"),
   opacityRange: document.getElementById("opacityRange"),
   opacityValue: document.getElementById("opacityValue"),
+  sizeRange: document.getElementById("sizeRange"),
+  sizeValue: document.getElementById("sizeValue"),
   selectedFaceMeta: document.getElementById("selectedFaceMeta"),
   downloadBtn: document.getElementById("downloadBtn"),
 };
@@ -69,6 +72,18 @@ function clampOpacity(value) {
 
 function opacityToPercent(opacity) {
   return Math.round(clampOpacity(opacity) * 100);
+}
+
+
+function clampSize(value) {
+  if (Number.isNaN(value)) {
+    return 1;
+  }
+  return Math.min(2.2, Math.max(0.4, value));
+}
+
+function sizeToPercent(size) {
+  return Math.round(clampSize(size) * 100);
 }
 
 function pickExpression(expressions = {}) {
@@ -101,6 +116,12 @@ function syncOpacityControl(opacity) {
   refs.opacityValue.textContent = `${value}%`;
 }
 
+function syncSizeControl(size) {
+  const value = sizeToPercent(size);
+  refs.sizeRange.value = String(value);
+  refs.sizeValue.textContent = `${value}%`;
+}
+
 function syncControlsForSelection() {
   const selected = getSelectedFace();
 
@@ -108,14 +129,18 @@ function syncControlsForSelection() {
     refs.selectedFaceMeta.textContent = "Click an emoji on preview to adjust only that one.";
     refs.emojiSelect.value = state.defaultEmoji;
     refs.opacityRange.disabled = true;
+    refs.sizeRange.disabled = true;
     syncOpacityControl(state.defaultOpacity);
+    syncSizeControl(state.defaultSize);
     return;
   }
 
-  refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}%`;
+  refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
   refs.emojiSelect.value = selected.emoji;
   refs.opacityRange.disabled = false;
+  refs.sizeRange.disabled = false;
   syncOpacityControl(selected.opacity);
+  syncSizeControl(selected.size);
 }
 
 function syncCanvasStageSize(imageWidth) {
@@ -168,12 +193,13 @@ function normalizeBox(box) {
   };
 }
 
-function createFace({ box, emoji, opacity, expression = "neutral", manual = false }) {
+function createFace({ box, emoji, opacity, size = 1, expression = "neutral", manual = false }) {
   return {
     id: makeFaceId(),
     box: normalizeBox(box),
     emoji,
     opacity: clampOpacity(opacity),
+    size: clampSize(size),
     expression,
     manual,
   };
@@ -183,7 +209,7 @@ function drawEmojiSticker(ctx, face) {
   const { x, y, width, height } = face.box;
   const cx = x + width / 2;
   const cy = y + height / 2;
-  const fontSize = Math.max(20, Math.min(width, height) * 0.86);
+  const fontSize = Math.max(20, Math.min(width, height) * 0.86) * clampSize(face.size ?? 1);
 
   ctx.save();
   ctx.globalAlpha = clampOpacity(face.opacity);
@@ -305,6 +331,7 @@ async function detectFaces() {
         expression,
         emoji,
         opacity: state.defaultOpacity,
+        size: state.defaultSize,
       });
     });
 
@@ -526,6 +553,7 @@ function setupCanvasInteractions() {
         box: state.draftRect,
         emoji: state.defaultEmoji,
         opacity: state.defaultOpacity,
+        size: state.defaultSize,
         expression: "manual",
         manual: true,
       });
@@ -618,6 +646,19 @@ function setupControlEvents() {
     renderAll();
   });
 
+  refs.sizeRange.addEventListener("input", (event) => {
+    const selected = getSelectedFace();
+    if (!selected) {
+      syncSizeControl(state.defaultSize);
+      setStatus("Select one emoji on preview to adjust size.");
+      return;
+    }
+
+    const size = clampSize(Number(event.target.value) / 100);
+    selected.size = size;
+    renderAll();
+  });
+
   refs.downloadBtn.addEventListener("click", () => {
     if (!state.image) {
       setStatus("No edited image to download yet.", true);
@@ -650,6 +691,7 @@ async function init() {
   refs.canvasStage.style.width = "100%";
   refs.overlayCanvas.style.cursor = "pointer";
   refs.emojiSelect.value = state.defaultEmoji;
+  syncSizeControl(state.defaultSize);
   renderAll();
 
   setupQuickUploadArea();
