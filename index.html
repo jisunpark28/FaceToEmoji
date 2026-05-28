@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaceToEmoji</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <h1>FaceToEmoji</h1>
+      </header>
+
+      <main class="workspace">
+        <section class="card editor">
+          <h2>Live Preview</h2>
+          <div id="canvasContainer" class="canvas-container" role="button" tabindex="0" aria-label="Quick upload area">
+            <input id="imageInput" type="file" accept="image/*" />
+            <div id="previewActions" class="preview-actions">
+              <button id="replaceImageBtn" type="button" aria-label="Replace image">+</button>
+              <button id="removeImageBtn" type="button" aria-label="Remove image">×</button>
+            </div>
+            <div id="quickUploadHint" class="quick-upload-hint">
+              <strong>Quick Upload</strong>
+              <span>Drop image here, or click to upload</span>
+            </div>
+            <div id="canvasStage" class="canvas-stage">
+              <canvas id="previewCanvas"></canvas>
+              <canvas id="overlayCanvas"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <aside class="card controls">
+          <h2>Quick Controls</h2>
+          <p id="statusText" class="status">Loading AI models...</p>
+
+          <div class="button-row">
+            <button id="detectBtn" type="button">Auto</button>
+            <button id="manualBtn" type="button">Manual</button>
+            <button id="clearBtn" type="button">Reset</button>
+          </div>
+          <button id="editBtn" type="button" class="edit-toggle">Edit</button>
+
+          <div class="control-group">
+            <label for="emojiSelect">Emoji</label>
+            <select id="emojiSelect">
+              <option value="🙂">🙂 Soft Smile</option>
+              <option value="😄">😄 Big Smile</option>
+              <option value="😎">😎 Cool</option>
+              <option value="😍">😍 Heart Eyes</option>
+              <option value="😲">😲 Surprise</option>
+              <option value="😢">😢 Sad</option>
+              <option value="😡">😡 Angry</option>
+            </select>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="opacityRange">Opacity</label>
+                <span id="opacityValue" class="slider-value">100%</span>
+              </div>
+              <input id="opacityRange" type="range" min="0" max="100" value="100" step="1" />
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="sizeRange">Size</label>
+                <span id="sizeValue" class="slider-value">100%</span>
+              </div>
+              <input id="sizeRange" type="range" min="40" max="220" value="100" step="1" />
+            </div>
+
+            <button id="deleteSelectedBtn" type="button" class="danger">Delete Selected Emoji</button>
+          </div>
+
+          <p id="selectedFaceMeta" class="muted">Turn on Edit mode, then click an emoji to change size/delete/options.</p>
+
+          <button id="downloadBtn" type="button" class="primary">Download Edited Image</button>
+        </aside>
+      </main>
+    </div>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script defer src="./app.js"></script>
+  </body>
+</html>
