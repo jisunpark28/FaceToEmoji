@@ -279,7 +279,7 @@ function drawEmojiSticker(ctx, face) {
 function drawWatermark(ctx) {
   const text = "Made with FaceToEmoji";
   const minSide = Math.min(refs.previewCanvas.width, refs.previewCanvas.height);
-  const fontSize = Math.max(14, Math.min(64, minSide * 0.035));
+  const fontSize = Math.max(28, Math.min(128, minSide * 0.07));
   const margin = Math.max(10, Math.min(28, minSide * 0.018));
 
   ctx.save();
