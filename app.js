@@ -41,6 +41,7 @@ const refs = {
   previewCanvas: document.getElementById("previewCanvas"),
   overlayCanvas: document.getElementById("overlayCanvas"),
   canvasStage: document.getElementById("canvasStage"),
+  canvasContainer: document.getElementById("canvasContainer"),
 };
 
 const previewCtx = refs.previewCanvas.getContext("2d");
@@ -72,8 +73,15 @@ function pickExpression(expressions = {}) {
   return chosen;
 }
 
+function formatExpression(expression) {
+  if (!expression) {
+    return "Neutral";
+  }
+  return expression.charAt(0).toUpperCase() + expression.slice(1);
+}
+
 function faceLabelMode(face) {
-  return face.mode === "emoji" ? `${face.emoji} 이모지` : "블러";
+  return face.mode === "emoji" ? `${face.emoji} Emoji` : "Blur";
 }
 
 function getSelectedFace() {
@@ -84,7 +92,7 @@ function syncSelectedFacePanel() {
   const selected = getSelectedFace();
 
   if (!selected) {
-    refs.selectedFaceMeta.textContent = "얼굴을 선택해 상세 설정";
+    refs.selectedFaceMeta.textContent = "Select a face to edit details";
     refs.selectedModeSelect.disabled = true;
     refs.excludeCheckbox.disabled = true;
     refs.removeFaceBtn.disabled = true;
@@ -99,9 +107,9 @@ function syncSelectedFacePanel() {
   refs.excludeCheckbox.checked = selected.excluded;
 
   const expressionText = selected.manual
-    ? "수동 추가"
-    : `표정: ${selected.expression}`;
-  refs.selectedFaceMeta.textContent = `${expressionText} / 현재: ${faceLabelMode(selected)} / ${selected.excluded ? "제외됨" : "적용 중"}`;
+    ? "Manually added"
+    : `Expression: ${formatExpression(selected.expression)}`;
+  refs.selectedFaceMeta.textContent = `${expressionText} / Style: ${faceLabelMode(selected)} / ${selected.excluded ? "Excluded" : "Applied"}`;
 }
 
 function renderFaceList() {
@@ -110,7 +118,7 @@ function renderFaceList() {
   if (state.faces.length === 0) {
     const emptyItem = document.createElement("li");
     emptyItem.className = "empty";
-    emptyItem.textContent = "아직 인식된 얼굴이 없습니다.";
+    emptyItem.textContent = "No faces detected yet.";
     refs.faceList.appendChild(emptyItem);
     return;
   }
@@ -124,7 +132,7 @@ function renderFaceList() {
 
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = `얼굴 ${index + 1} · ${faceLabelMode(face)} ${face.excluded ? "(제외)" : ""}`;
+    button.textContent = `Face ${index + 1} · ${faceLabelMode(face)} ${face.excluded ? "(Excluded)" : ""}`;
     button.addEventListener("click", () => {
       state.selectedFaceId = face.id;
       syncSelectedFacePanel();
@@ -135,8 +143,8 @@ function renderFaceList() {
     const meta = document.createElement("p");
     meta.className = "meta";
     meta.textContent = face.manual
-      ? "수동으로 선택된 얼굴 영역"
-      : `인식 표정: ${face.expression}`;
+      ? "Manually selected face area"
+      : `Detected expression: ${formatExpression(face.expression)}`;
 
     item.appendChild(button);
     item.appendChild(meta);
@@ -144,12 +152,19 @@ function renderFaceList() {
   });
 }
 
+function syncCanvasStageSize(imageWidth) {
+  const containerWidth = refs.canvasContainer.getBoundingClientRect().width;
+  const availableWidth = Math.max(220, containerWidth - 20);
+  const stageWidth = Math.min(imageWidth, availableWidth);
+  refs.canvasStage.style.width = `${stageWidth}px`;
+}
+
 function resizeCanvases(width, height) {
   refs.previewCanvas.width = width;
   refs.previewCanvas.height = height;
   refs.overlayCanvas.width = width;
   refs.overlayCanvas.height = height;
-  refs.canvasStage.style.width = `${width}px`;
+  syncCanvasStageSize(width);
 }
 
 function drawEmojiSticker(ctx, face) {
@@ -231,7 +246,7 @@ function drawFaceOutline(face, index) {
   overlayCtx.lineWidth = lineWidth;
   overlayCtx.strokeRect(x, y, width, height);
 
-  const label = `${index + 1} · ${face.mode === "emoji" ? face.emoji : "BLUR"} ${face.excluded ? "(제외)" : ""}`;
+  const label = `${index + 1} · ${face.mode === "emoji" ? face.emoji : "BLUR"} ${face.excluded ? "(EXCLUDED)" : ""}`;
   overlayCtx.font = "16px sans-serif";
   const metrics = overlayCtx.measureText(label);
   const labelWidth = metrics.width + 10;
@@ -307,15 +322,15 @@ function createFace(box, expression = "neutral", manual = false) {
 
 async function detectFaces() {
   if (!state.modelsReady) {
-    setStatus("모델 로딩이 아직 완료되지 않았습니다.", true);
+    setStatus("AI models are still loading. Please wait a moment.", true);
     return;
   }
   if (!state.image) {
-    setStatus("먼저 사진을 업로드해 주세요.", true);
+    setStatus("Upload a photo first to start detection.", true);
     return;
   }
 
-  setStatus("얼굴 및 표정 자동 인식 중...");
+  setStatus("Detecting faces and reading expressions...");
   try {
     const options = new faceapi.TinyFaceDetectorOptions({
       inputSize: 416,
@@ -334,13 +349,13 @@ async function detectFaces() {
     renderAll();
 
     if (state.faces.length === 0) {
-      setStatus("자동 인식 결과가 없습니다. 수동 얼굴 추가를 사용해 보세요.");
+      setStatus("No faces found automatically. Try Add Face Manually.");
       return;
     }
-    setStatus(`${state.faces.length}개의 얼굴을 자동 인식했습니다.`);
+    setStatus(`Auto-detected ${state.faces.length} face(s).`);
   } catch (error) {
     console.error(error);
-    setStatus("얼굴 인식 중 오류가 발생했습니다.", true);
+    setStatus("An error occurred while detecting faces.", true);
   }
 }
 
@@ -376,9 +391,9 @@ function setManualMode(active) {
   state.manualMode = active;
   refs.manualBtn.classList.toggle("active", active);
   if (active) {
-    setStatus("수동 모드: 얼굴 영역을 드래그해 직접 추가하세요.");
+    setStatus("Manual mode on: drag to add a missed face.");
   } else {
-    setStatus("일반 모드: 얼굴 클릭 시 제외/복원이 토글됩니다.");
+    setStatus("Normal mode on: tap/click a face to exclude or restore.");
   }
 }
 
@@ -392,7 +407,7 @@ function loadImageFromFile(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("이미지를 읽을 수 없습니다."));
+      reject(new Error("Unable to read this image file."));
     };
     image.src = url;
   });
@@ -403,12 +418,12 @@ async function onFileSelected(file) {
     return;
   }
   if (!file.type.startsWith("image/")) {
-    setStatus("이미지 파일만 업로드할 수 있습니다.", true);
+    setStatus("Please upload an image file only.", true);
     return;
   }
 
   try {
-    setStatus("이미지 불러오는 중...");
+    setStatus("Loading image...");
     const image = await loadImageFromFile(file);
     state.image = image;
     state.fileName = file.name.replace(/\.[^.]+$/, "") || "facetoemoji";
@@ -421,7 +436,7 @@ async function onFileSelected(file) {
     await detectFaces();
   } catch (error) {
     console.error(error);
-    setStatus("이미지 업로드 중 오류가 발생했습니다.", true);
+    setStatus("An error occurred while uploading the image.", true);
   }
 }
 
@@ -457,8 +472,8 @@ function setupCanvasInteractions() {
     state.selectedFaceId = targetFace.id;
     setStatus(
       targetFace.excluded
-        ? "선택한 얼굴이 제외되었습니다."
-        : "선택한 얼굴 제외가 해제되었습니다.",
+        ? "Selected face is now excluded."
+        : "Selected face is restored.",
     );
     renderAll();
   });
@@ -504,7 +519,7 @@ function setupCanvasInteractions() {
       const face = createFace(state.draftRect, "neutral", true);
       state.faces.push(face);
       state.selectedFaceId = face.id;
-      setStatus("수동 얼굴이 추가되었습니다.");
+      setStatus("Manual face area added.");
     }
 
     state.drawStart = null;
@@ -544,7 +559,7 @@ function setupControlEvents() {
     state.draftRect = null;
     setManualMode(false);
     renderAll();
-    setStatus("얼굴 정보가 초기화되었습니다.");
+    setStatus("Face data has been reset.");
   });
 
   refs.defaultModeSelect.addEventListener("change", (event) => {
@@ -553,12 +568,12 @@ function setupControlEvents() {
 
   refs.applyDefaultBtn.addEventListener("click", () => {
     if (state.faces.length === 0) {
-      setStatus("적용할 얼굴이 없습니다.");
+      setStatus("There are no faces to apply this style to.");
       return;
     }
     state.faces = state.faces.map((face) => ({ ...face, mode: state.defaultMode }));
     renderAll();
-    setStatus(`현재 모든 얼굴을 ${state.defaultMode === "emoji" ? "이모지" : "블러"}로 변경했습니다.`);
+    setStatus(`Updated all faces to ${state.defaultMode === "emoji" ? "Emoji" : "Blur"}.`);
   });
 
   refs.selectedModeSelect.addEventListener("change", (event) => {
@@ -587,12 +602,12 @@ function setupControlEvents() {
     state.faces = state.faces.filter((face) => face.id !== selected.id);
     state.selectedFaceId = state.faces[0]?.id ?? null;
     renderAll();
-    setStatus("선택한 얼굴을 삭제했습니다.");
+    setStatus("Selected face has been deleted.");
   });
 
   refs.downloadBtn.addEventListener("click", () => {
     if (!state.image) {
-      setStatus("다운로드할 이미지가 없습니다.", true);
+      setStatus("There is no edited image to download yet.", true);
       return;
     }
     drawPreview();
@@ -604,17 +619,17 @@ function setupControlEvents() {
 }
 
 async function loadModels() {
-  setStatus("모델 로딩 중...");
+  setStatus("Loading AI models...");
   try {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]);
     state.modelsReady = true;
-    setStatus("모델 준비 완료. 이미지를 올리면 자동 인식됩니다.");
+    setStatus("Models are ready. Upload a photo to auto-detect faces.");
   } catch (error) {
     console.error(error);
-    setStatus("모델 로딩 실패. 네트워크 상태를 확인해 주세요.", true);
+    setStatus("Failed to load models. Check your network connection.", true);
   }
 }
 
@@ -627,6 +642,14 @@ async function init() {
   setupControlEvents();
   setupCanvasInteractions();
   handleDropZoneEvents();
+
+  window.addEventListener("resize", () => {
+    if (!state.image) {
+      return;
+    }
+    syncCanvasStageSize(state.image.width);
+  });
+
   await loadModels();
 }
 

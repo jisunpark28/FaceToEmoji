@@ -17,20 +17,21 @@
 body {
   margin: 0;
   font-family:
-    "Pretendard",
-    "Noto Sans KR",
+    Inter,
+    "Segoe UI",
+    Roboto,
     -apple-system,
     BlinkMacSystemFont,
-    "Segoe UI",
     sans-serif;
   color: var(--text);
   background: var(--bg);
+  line-height: 1.45;
 }
 
 .app-shell {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 18px 40px;
+  padding: 30px 20px 42px;
 }
 
 .hero {
@@ -40,17 +41,19 @@ body {
 .hero h1 {
   margin: 0;
   font-size: 2rem;
+  letter-spacing: -0.02em;
 }
 
 .hero p {
   margin: 8px 0 0;
   color: var(--muted);
+  max-width: 560px;
 }
 
 .layout {
   display: grid;
   gap: 16px;
-  grid-template-columns: 320px minmax(0, 1fr) 280px;
+  grid-template-columns: 330px minmax(0, 1fr) 290px;
   align-items: start;
 }
 
@@ -81,7 +84,7 @@ h3 {
   display: flex;
   border: 1.5px dashed #9eb0d8;
   border-radius: 12px;
-  min-height: 120px;
+  min-height: 124px;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -120,6 +123,7 @@ select {
   border-radius: 10px;
   border: 1px solid var(--line);
   padding: 10px 12px;
+  min-height: 44px;
   font-size: 0.9rem;
   background: #fff;
 }
@@ -184,6 +188,7 @@ button.active {
   background: #f0f3fb;
   position: relative;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -216,7 +221,7 @@ button.active {
   padding: 0;
   display: grid;
   gap: 8px;
-  max-height: 75vh;
+  max-height: 72vh;
   overflow: auto;
 }
 
@@ -232,6 +237,7 @@ button.active {
   background: transparent;
   border: 0;
   padding: 0;
+  min-height: 0;
 }
 
 .face-item.selected {
@@ -257,5 +263,80 @@ button.active {
 
   .faces .face-list {
     max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 20px 12px 30px;
+  }
+
+  .hero {
+    margin-bottom: 14px;
+  }
+
+  .hero h1 {
+    font-size: 1.62rem;
+  }
+
+  .hero p {
+    font-size: 0.92rem;
+    max-width: none;
+  }
+
+  .card {
+    padding: 13px;
+    border-radius: 12px;
+  }
+
+  h2 {
+    font-size: 1rem;
+  }
+
+  .dropzone {
+    min-height: 102px;
+    padding: 13px;
+    font-size: 0.9rem;
+  }
+
+  button,
+  select {
+    font-size: 0.88rem;
+  }
+
+  .checkbox-row {
+    font-size: 0.86rem;
+  }
+
+  .canvas-container {
+    min-height: 300px;
+    padding: 8px;
+  }
+
+  .face-item {
+    padding: 8px;
+  }
+
+  .face-item .meta {
+    font-size: 0.76rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .hero h1 {
+    font-size: 1.5rem;
+  }
+
+  .hero p {
+    font-size: 0.88rem;
+  }
+
+  .canvas-container {
+    min-height: 260px;
   }
 }
