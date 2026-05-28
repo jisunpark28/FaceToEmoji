@@ -16,6 +16,7 @@ const state = {
   fileName: "facetoemoji",
   faces: [],
   selectedFaceId: null,
+  editMode: false,
   manualMode: false,
   drawing: false,
   drawStart: null,
@@ -39,11 +40,13 @@ const refs = {
   detectBtn: document.getElementById("detectBtn"),
   manualBtn: document.getElementById("manualBtn"),
   clearBtn: document.getElementById("clearBtn"),
+  editBtn: document.getElementById("editBtn"),
   emojiSelect: document.getElementById("emojiSelect"),
   opacityRange: document.getElementById("opacityRange"),
   opacityValue: document.getElementById("opacityValue"),
   sizeRange: document.getElementById("sizeRange"),
   sizeValue: document.getElementById("sizeValue"),
+  deleteSelectedBtn: document.getElementById("deleteSelectedBtn"),
   selectedFaceMeta: document.getElementById("selectedFaceMeta"),
   downloadBtn: document.getElementById("downloadBtn"),
 };
@@ -122,14 +125,45 @@ function syncSizeControl(size) {
   refs.sizeValue.textContent = `${value}%`;
 }
 
+function setEditMode(active, announce = true) {
+  state.editMode = active;
+  refs.editBtn.classList.toggle("active", active);
+  syncControlsForSelection();
+
+  if (!announce) {
+    return;
+  }
+
+  if (active) {
+    setStatus("Edit mode on: click an emoji to edit size, opacity, emoji, or delete.");
+    return;
+  }
+
+  setStatus("Edit mode off.");
+}
+
 function syncControlsForSelection() {
   const selected = getSelectedFace();
+  const canEditSelected = state.editMode && Boolean(selected);
 
-  if (!selected) {
-    refs.selectedFaceMeta.textContent = "Click an emoji on preview to adjust only that one.";
+  if (!state.editMode) {
+    refs.selectedFaceMeta.textContent = "Turn on Edit mode to change selected emoji options.";
     refs.emojiSelect.value = state.defaultEmoji;
+    refs.emojiSelect.disabled = true;
     refs.opacityRange.disabled = true;
     refs.sizeRange.disabled = true;
+    refs.deleteSelectedBtn.disabled = true;
+    syncOpacityControl(state.defaultOpacity);
+    syncSizeControl(state.defaultSize);
+    return;
+  }
+
+  if (!canEditSelected) {
+    refs.selectedFaceMeta.textContent = "Edit mode on. Click an emoji on preview to edit it.";
+    refs.emojiSelect.disabled = true;
+    refs.opacityRange.disabled = true;
+    refs.sizeRange.disabled = true;
+    refs.deleteSelectedBtn.disabled = true;
     syncOpacityControl(state.defaultOpacity);
     syncSizeControl(state.defaultSize);
     return;
@@ -137,8 +171,10 @@ function syncControlsForSelection() {
 
   refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
   refs.emojiSelect.value = selected.emoji;
+  refs.emojiSelect.disabled = false;
   refs.opacityRange.disabled = false;
   refs.sizeRange.disabled = false;
+  refs.deleteSelectedBtn.disabled = false;
   syncOpacityControl(selected.opacity);
   syncSizeControl(selected.size);
 }
@@ -173,6 +209,7 @@ function clearLoadedImage() {
   refs.overlayCanvas.height = 0;
   refs.canvasStage.style.width = "100%";
   setManualMode(false);
+  setEditMode(false, false);
   renderAll();
   setStatus("Image removed. Upload a new photo.");
 }
@@ -513,7 +550,7 @@ function setupCanvasInteractions() {
 
     state.selectedFaceId = targetFace.id;
     renderAll();
-    setStatus("Face selected. Change emoji or opacity.");
+    setStatus(state.editMode ? "Emoji selected. Edit options are now enabled." : "Emoji selected. Turn on Edit mode to modify it.");
   });
 
   refs.overlayCanvas.addEventListener("pointerdown", (event) => {
@@ -585,6 +622,11 @@ function setupCanvasInteractions() {
       }
 
       event.preventDefault();
+      if (!state.editMode) {
+        setStatus("Turn on Edit mode first.");
+        return;
+      }
+
       const selected = getSelectedFace();
       if (!selected) {
         setStatus("Click an emoji first, then use wheel to adjust its opacity.");
@@ -609,6 +651,10 @@ function setupControlEvents() {
     setManualMode(!state.manualMode);
   });
 
+  refs.editBtn.addEventListener("click", () => {
+    setEditMode(!state.editMode);
+  });
+
   refs.clearBtn.addEventListener("click", () => {
     state.faces = [];
     state.selectedFaceId = null;
@@ -619,25 +665,25 @@ function setupControlEvents() {
   });
 
   refs.emojiSelect.addEventListener("change", (event) => {
-    const emoji = event.target.value;
-    state.defaultEmoji = emoji;
-
     const selected = getSelectedFace();
-    if (selected) {
-      selected.emoji = emoji;
-      renderAll();
-      setStatus("Selected face emoji updated.");
+    if (!state.editMode || !selected) {
+      syncControlsForSelection();
+      setStatus("Turn on Edit mode and select an emoji to change it.");
       return;
     }
 
-    setStatus("Default emoji updated. Drag in manual mode to add.");
+    const emoji = event.target.value;
+    selected.emoji = emoji;
+    state.defaultEmoji = emoji;
+    renderAll();
+    setStatus("Selected emoji updated.");
   });
 
   refs.opacityRange.addEventListener("input", (event) => {
     const selected = getSelectedFace();
-    if (!selected) {
-      syncOpacityControl(state.defaultOpacity);
-      setStatus("Select one emoji on preview to adjust opacity.");
+    if (!state.editMode || !selected) {
+      syncControlsForSelection();
+      setStatus("Turn on Edit mode and select one emoji to adjust opacity.");
       return;
     }
 
@@ -648,15 +694,28 @@ function setupControlEvents() {
 
   refs.sizeRange.addEventListener("input", (event) => {
     const selected = getSelectedFace();
-    if (!selected) {
-      syncSizeControl(state.defaultSize);
-      setStatus("Select one emoji on preview to adjust size.");
+    if (!state.editMode || !selected) {
+      syncControlsForSelection();
+      setStatus("Turn on Edit mode and select one emoji to adjust size.");
       return;
     }
 
     const size = clampSize(Number(event.target.value) / 100);
     selected.size = size;
     renderAll();
+  });
+
+  refs.deleteSelectedBtn.addEventListener("click", () => {
+    const selected = getSelectedFace();
+    if (!state.editMode || !selected) {
+      setStatus("Turn on Edit mode and select one emoji to delete.");
+      return;
+    }
+
+    state.faces = state.faces.filter((face) => face.id !== selected.id);
+    state.selectedFaceId = state.faces[0]?.id ?? null;
+    renderAll();
+    setStatus("Selected emoji deleted.");
   });
 
   refs.downloadBtn.addEventListener("click", () => {
@@ -691,6 +750,7 @@ async function init() {
   refs.canvasStage.style.width = "100%";
   refs.overlayCanvas.style.cursor = "pointer";
   refs.emojiSelect.value = state.defaultEmoji;
+  refs.editBtn.classList.remove("active");
   syncSizeControl(state.defaultSize);
   renderAll();
 

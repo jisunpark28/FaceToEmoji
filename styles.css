@@ -225,6 +225,21 @@ button.active {
   color: #2344aa;
 }
 
+
+.edit-toggle {
+  margin-top: 8px;
+}
+
+button.danger {
+  border-color: #f2c8cb;
+  color: #b8333e;
+}
+
+button.danger:hover {
+  border-color: #e69ca2;
+  background: #fff7f7;
+}
+
 .control-group {
   border: 1px solid var(--line);
   border-radius: 11px;
