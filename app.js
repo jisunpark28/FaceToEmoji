@@ -1,4 +1,5 @@
 const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+const BLUR_CIRCLE_VALUE = "__blur_circle__";
 
 const expressionToEmoji = {
   neutral: "🙂",
@@ -83,6 +84,12 @@ function opacityToPercent(opacity) {
   return Math.round(clampOpacity(opacity) * 100);
 }
 
+function getStickerDisplayLabel(sticker) {
+  if (sticker === BLUR_CIRCLE_VALUE) {
+    return "Blur";
+  }
+  return sticker || "🙂";
+}
 
 function clampSize(value) {
   if (Number.isNaN(value)) {
@@ -188,7 +195,7 @@ function syncControlsForSelection() {
     return;
   }
 
-  refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
+  refs.selectedFaceMeta.textContent = `Selected face / Style ${getStickerDisplayLabel(selected.emoji)} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
   refs.emojiSelect.value = selected.emoji;
   refs.emojiSelect.disabled = false;
   refs.opacityRange.disabled = false;
@@ -265,6 +272,24 @@ function drawEmojiSticker(ctx, face) {
   const { x, y, width, height } = face.box;
   const cx = x + width / 2;
   const cy = y + height / 2;
+
+  if (face.emoji === BLUR_CIRCLE_VALUE && state.image) {
+    const blurScale = clampSize(face.size ?? 1);
+    const radius = Math.max(12, (Math.min(width, height) / 2) * blurScale);
+    const blurStrength = Math.max(8, Math.min(42, Math.round(radius * 0.22)));
+
+    ctx.save();
+    ctx.globalAlpha = clampOpacity(face.opacity);
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.filter = `blur(${blurStrength}px)`;
+    ctx.drawImage(state.image, 0, 0);
+    ctx.filter = "none";
+    ctx.restore();
+    return;
+  }
+
   const fontSize = Math.max(20, Math.min(width, height) * 0.86) * clampSize(face.size ?? 1);
 
   ctx.save();
@@ -313,7 +338,7 @@ function drawFaceOutline(face, index) {
   overlayCtx.lineWidth = selected ? 3 : 2;
   overlayCtx.strokeRect(x, y, width, height);
 
-  const label = `${index + 1} · ${face.emoji} · ${opacityToPercent(face.opacity)}%`;
+  const label = `${index + 1} · ${getStickerDisplayLabel(face.emoji)} · ${opacityToPercent(face.opacity)}%`;
   overlayCtx.font = "15px sans-serif";
   const metrics = overlayCtx.measureText(label);
   const labelWidth = metrics.width + 10;
