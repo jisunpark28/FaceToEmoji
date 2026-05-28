@@ -10,16 +10,22 @@
     <div class="app-shell">
       <header class="hero">
         <h1>FaceToEmoji</h1>
-        <p>Turn every face in your photo into emoji magic, instantly.</p>
+        <p>Quick upload, pick your emoji, set opacity, and drag to place.</p>
       </header>
 
       <main class="workspace">
         <section class="card editor">
           <h2>Live Preview</h2>
           <p class="muted">
-            Click a face to select it. Use Shift/Alt + click to quickly exclude or restore.
+            Quick Upload: drop an image here or click the preview area.
           </p>
-          <div id="canvasContainer" class="canvas-container">
+
+          <div id="canvasContainer" class="canvas-container" role="button" tabindex="0" aria-label="Quick upload area">
+            <input id="imageInput" type="file" accept="image/*" />
+            <div id="quickUploadHint" class="quick-upload-hint">
+              <strong>Quick Upload</strong>
+              <span>Drop image here, or click to upload</span>
+            </div>
             <div id="canvasStage" class="canvas-stage">
               <canvas id="previewCanvas"></canvas>
               <canvas id="overlayCanvas"></canvas>
@@ -29,80 +35,36 @@
 
         <aside class="card controls">
           <h2>Quick Controls</h2>
+          <p id="statusText" class="status">Loading AI models...</p>
 
-          <div class="control-group">
-            <h3>1) Upload</h3>
-            <label id="dropzone" class="dropzone" for="imageInput">
-              <input id="imageInput" type="file" accept="image/*" />
-              <span>Drag & drop an image here, or tap to choose a file</span>
-            </label>
-            <p id="statusText" class="status">Loading AI models...</p>
+          <div class="button-row">
+            <button id="detectBtn" type="button">Auto</button>
+            <button id="manualBtn" type="button">Manual</button>
+            <button id="clearBtn" type="button">Reset</button>
           </div>
 
           <div class="control-group">
-            <h3>2) Detection</h3>
-            <div class="button-row">
-              <button id="detectBtn" type="button">Auto Detect Faces</button>
-              <button id="manualBtn" type="button">Add Face Manually</button>
-              <button id="clearBtn" type="button">Reset Faces</button>
-            </div>
-          </div>
-
-          <div class="control-group">
-            <h3>3) Bulk Style</h3>
-            <div class="field-group compact">
-              <label for="defaultModeSelect">Default Face Style</label>
-              <select id="defaultModeSelect">
-                <option value="emoji">Emoji</option>
-                <option value="blur">Blur</option>
-              </select>
-              <button id="applyDefaultBtn" type="button">Apply Style to All Faces</button>
-            </div>
+            <label for="emojiSelect">Emoji</label>
+            <select id="emojiSelect">
+              <option value="🙂">🙂 Soft Smile</option>
+              <option value="😄">😄 Big Smile</option>
+              <option value="😎">😎 Cool</option>
+              <option value="😍">😍 Heart Eyes</option>
+              <option value="😲">😲 Surprise</option>
+              <option value="😢">😢 Sad</option>
+              <option value="😡">😡 Angry</option>
+            </select>
 
             <div class="slider-group">
               <div class="slider-header">
-                <label for="defaultEmojiOpacityRange">Default Emoji Opacity</label>
-                <span id="defaultEmojiOpacityValue" class="slider-value">95%</span>
+                <label for="opacityRange">Opacity</label>
+                <span id="opacityValue" class="slider-value">95%</span>
               </div>
-              <input id="defaultEmojiOpacityRange" type="range" min="10" max="100" value="95" step="1" />
+              <input id="opacityRange" type="range" min="10" max="100" value="95" step="1" />
             </div>
-
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="defaultBlurOpacityRange">Default Blur Opacity</label>
-                <span id="defaultBlurOpacityValue" class="slider-value">90%</span>
-              </div>
-              <input id="defaultBlurOpacityRange" type="range" min="10" max="100" value="90" step="1" />
-            </div>
-
-            <button id="applyOpacityDefaultsBtn" type="button">Apply Opacity to All Faces</button>
           </div>
 
-          <div class="selected-panel control-group">
-            <h3>4) Selected Face</h3>
-            <p id="selectedFaceMeta" class="muted">Select a face directly on the preview</p>
-            <div class="field-group compact">
-              <label for="selectedModeSelect">Face Style</label>
-              <select id="selectedModeSelect">
-                <option value="emoji">Emoji</option>
-                <option value="blur">Blur</option>
-              </select>
-            </div>
-
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="selectedOpacityRange">Selected Effect Opacity</label>
-                <span id="selectedOpacityValue" class="slider-value">--</span>
-              </div>
-              <input id="selectedOpacityRange" type="range" min="10" max="100" value="100" step="1" />
-            </div>
-
-            <label class="checkbox-row">
-              <input id="excludeCheckbox" type="checkbox" />
-              Exclude this face (leave unchanged)
-            </label>
-            <button id="removeFaceBtn" type="button" class="danger">Delete Selected Face</button>
-          </div>
+          <p id="selectedFaceMeta" class="muted">Click a face on preview to edit it.</p>
 
           <button id="downloadBtn" type="button" class="primary">Download Edited Image</button>
         </aside>

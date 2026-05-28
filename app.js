@@ -4,9 +4,9 @@ const expressionToEmoji = {
   neutral: "🙂",
   happy: "😄",
   sad: "😢",
-  angry: "😠",
-  fearful: "😨",
-  disgusted: "🤢",
+  angry: "😡",
+  fearful: "😲",
+  disgusted: "😡",
   surprised: "😲",
 };
 
@@ -16,40 +16,30 @@ const state = {
   fileName: "facetoemoji",
   faces: [],
   selectedFaceId: null,
-  defaultMode: "emoji",
-  defaultEmojiOpacity: 0.95,
-  defaultBlurOpacity: 0.9,
   manualMode: false,
   drawing: false,
   drawStart: null,
   draftRect: null,
+  defaultEmoji: "🙂",
+  defaultOpacity: 0.95,
 };
 
 const refs = {
   imageInput: document.getElementById("imageInput"),
-  dropzone: document.getElementById("dropzone"),
+  canvasContainer: document.getElementById("canvasContainer"),
+  canvasStage: document.getElementById("canvasStage"),
+  quickUploadHint: document.getElementById("quickUploadHint"),
+  previewCanvas: document.getElementById("previewCanvas"),
+  overlayCanvas: document.getElementById("overlayCanvas"),
   statusText: document.getElementById("statusText"),
   detectBtn: document.getElementById("detectBtn"),
   manualBtn: document.getElementById("manualBtn"),
   clearBtn: document.getElementById("clearBtn"),
-  defaultModeSelect: document.getElementById("defaultModeSelect"),
-  applyDefaultBtn: document.getElementById("applyDefaultBtn"),
-  defaultEmojiOpacityRange: document.getElementById("defaultEmojiOpacityRange"),
-  defaultEmojiOpacityValue: document.getElementById("defaultEmojiOpacityValue"),
-  defaultBlurOpacityRange: document.getElementById("defaultBlurOpacityRange"),
-  defaultBlurOpacityValue: document.getElementById("defaultBlurOpacityValue"),
-  applyOpacityDefaultsBtn: document.getElementById("applyOpacityDefaultsBtn"),
+  emojiSelect: document.getElementById("emojiSelect"),
+  opacityRange: document.getElementById("opacityRange"),
+  opacityValue: document.getElementById("opacityValue"),
   selectedFaceMeta: document.getElementById("selectedFaceMeta"),
-  selectedModeSelect: document.getElementById("selectedModeSelect"),
-  selectedOpacityRange: document.getElementById("selectedOpacityRange"),
-  selectedOpacityValue: document.getElementById("selectedOpacityValue"),
-  excludeCheckbox: document.getElementById("excludeCheckbox"),
-  removeFaceBtn: document.getElementById("removeFaceBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
-  previewCanvas: document.getElementById("previewCanvas"),
-  overlayCanvas: document.getElementById("overlayCanvas"),
-  canvasStage: document.getElementById("canvasStage"),
-  canvasContainer: document.getElementById("canvasContainer"),
 };
 
 const previewCtx = refs.previewCanvas.getContext("2d");
@@ -67,6 +57,17 @@ function makeFaceId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function clampOpacity(value) {
+  if (Number.isNaN(value)) {
+    return 1;
+  }
+  return Math.min(1, Math.max(0.1, value));
+}
+
+function opacityToPercent(opacity) {
+  return Math.round(clampOpacity(opacity) * 100);
+}
+
 function pickExpression(expressions = {}) {
   let max = -1;
   let chosen = "neutral";
@@ -81,103 +82,33 @@ function pickExpression(expressions = {}) {
   return chosen;
 }
 
-function formatExpression(expression) {
-  if (!expression) {
-    return "Neutral";
-  }
-  return expression.charAt(0).toUpperCase() + expression.slice(1);
-}
-
-function faceLabelMode(face) {
-  return face.mode === "emoji" ? `${face.emoji} Emoji` : "Blur";
-}
-
-function clampOpacity(value) {
-  if (Number.isNaN(value)) {
-    return 1;
-  }
-  return Math.min(1, Math.max(0.1, value));
-}
-
-function opacityToPercent(opacity) {
-  return Math.round(clampOpacity(opacity) * 100);
-}
-
-function readFaceOpacityForMode(face, mode = face.mode) {
-  if (!face) {
-    return 1;
-  }
-
-  if (mode === "emoji") {
-    return clampOpacity(face.emojiOpacity ?? state.defaultEmojiOpacity);
-  }
-
-  return clampOpacity(face.blurOpacity ?? state.defaultBlurOpacity);
-}
-
-function setFaceOpacityForMode(face, mode, opacity) {
-  if (!face) {
-    return;
-  }
-
-  if (mode === "emoji") {
-    face.emojiOpacity = clampOpacity(opacity);
-    return;
-  }
-
-  face.blurOpacity = clampOpacity(opacity);
-}
-
-function syncDefaultOpacityControls() {
-  refs.defaultEmojiOpacityRange.value = String(opacityToPercent(state.defaultEmojiOpacity));
-  refs.defaultBlurOpacityRange.value = String(opacityToPercent(state.defaultBlurOpacity));
-  refs.defaultEmojiOpacityValue.textContent = `${opacityToPercent(state.defaultEmojiOpacity)}%`;
-  refs.defaultBlurOpacityValue.textContent = `${opacityToPercent(state.defaultBlurOpacity)}%`;
-}
-
-function syncSelectedOpacityControl(face) {
-  if (!face) {
-    refs.selectedOpacityRange.disabled = true;
-    refs.selectedOpacityValue.textContent = "--";
-    return;
-  }
-
-  refs.selectedOpacityRange.disabled = false;
-  const opacityPercent = opacityToPercent(readFaceOpacityForMode(face, face.mode));
-  refs.selectedOpacityRange.value = String(opacityPercent);
-  refs.selectedOpacityValue.textContent = `${opacityPercent}%`;
-}
-
 function getSelectedFace() {
   return state.faces.find((face) => face.id === state.selectedFaceId) || null;
 }
 
-function syncSelectedFacePanel() {
+function syncQuickUploadHint() {
+  refs.quickUploadHint.style.display = state.image ? "none" : "grid";
+}
+
+function syncOpacityControl(opacity) {
+  const value = opacityToPercent(opacity);
+  refs.opacityRange.value = String(value);
+  refs.opacityValue.textContent = `${value}%`;
+}
+
+function syncControlsForSelection() {
   const selected = getSelectedFace();
 
   if (!selected) {
-    refs.selectedFaceMeta.textContent = "Select a face directly on the preview";
-    refs.selectedModeSelect.disabled = true;
-    refs.excludeCheckbox.disabled = true;
-    refs.removeFaceBtn.disabled = true;
-    refs.excludeCheckbox.checked = false;
-    syncSelectedOpacityControl(null);
+    refs.selectedFaceMeta.textContent = "Click a face on preview to edit it.";
+    refs.emojiSelect.value = state.defaultEmoji;
+    syncOpacityControl(state.defaultOpacity);
     return;
   }
 
-  refs.selectedModeSelect.disabled = false;
-  refs.excludeCheckbox.disabled = false;
-  refs.removeFaceBtn.disabled = false;
-  refs.selectedModeSelect.value = selected.mode;
-  refs.excludeCheckbox.checked = selected.excluded;
-
-  const faceIndex = state.faces.findIndex((face) => face.id === selected.id) + 1;
-  const expressionText = selected.manual
-    ? "Manually added"
-    : `Expression: ${formatExpression(selected.expression)}`;
-  const opacityPercent = opacityToPercent(readFaceOpacityForMode(selected, selected.mode));
-  refs.selectedFaceMeta.textContent = `Face #${faceIndex} / ${expressionText} / Style: ${faceLabelMode(selected)} / Opacity: ${opacityPercent}% / ${selected.excluded ? "Excluded" : "Applied"}`;
-  syncSelectedOpacityControl(selected);
+  refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}%`;
+  refs.emojiSelect.value = selected.emoji;
+  syncOpacityControl(selected.opacity);
 }
 
 function syncCanvasStageSize(imageWidth) {
@@ -195,16 +126,42 @@ function resizeCanvases(width, height) {
   syncCanvasStageSize(width);
 }
 
+function normalizeBox(box) {
+  const maxWidth = refs.previewCanvas.width;
+  const maxHeight = refs.previewCanvas.height;
+  const x = Math.max(0, box.x);
+  const y = Math.max(0, box.y);
+  const width = Math.min(box.width, maxWidth - x);
+  const height = Math.min(box.height, maxHeight - y);
+
+  return {
+    x,
+    y,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  };
+}
+
+function createFace({ box, emoji, opacity, expression = "neutral", manual = false }) {
+  return {
+    id: makeFaceId(),
+    box: normalizeBox(box),
+    emoji,
+    opacity: clampOpacity(opacity),
+    expression,
+    manual,
+  };
+}
+
 function drawEmojiSticker(ctx, face) {
   const { x, y, width, height } = face.box;
   const cx = x + width / 2;
   const cy = y + height / 2;
   const radius = Math.max(18, Math.min(width, height) * 0.55);
   const fontSize = Math.max(20, Math.min(width, height) * 0.86);
-  const effectOpacity = readFaceOpacityForMode(face, "emoji");
 
   ctx.save();
-  ctx.globalAlpha = effectOpacity;
+  ctx.globalAlpha = clampOpacity(face.opacity);
   ctx.fillStyle = "rgba(255,255,255,0.45)";
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -217,34 +174,6 @@ function drawEmojiSticker(ctx, face) {
   ctx.restore();
 }
 
-function clipRoundedRect(ctx, x, y, w, h, radius) {
-  const r = Math.min(radius, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-function drawBlurFace(ctx, face) {
-  const { x, y, width, height } = face.box;
-  const blur = Math.max(8, Math.floor(Math.min(width, height) * 0.22));
-  const effectOpacity = readFaceOpacityForMode(face, "blur");
-  ctx.save();
-  clipRoundedRect(ctx, x, y, width, height, Math.min(width, height) * 0.25);
-  ctx.clip();
-  ctx.globalAlpha = effectOpacity;
-  ctx.filter = `blur(${blur}px)`;
-  ctx.drawImage(state.image, x, y, width, height, x, y, width, height);
-  ctx.restore();
-}
-
 function drawPreview() {
   previewCtx.clearRect(0, 0, refs.previewCanvas.width, refs.previewCanvas.height);
   if (!state.image) {
@@ -252,35 +181,20 @@ function drawPreview() {
   }
 
   previewCtx.drawImage(state.image, 0, 0);
-
-  state.faces.forEach((face) => {
-    if (face.excluded) {
-      return;
-    }
-
-    if (face.mode === "blur") {
-      drawBlurFace(previewCtx, face);
-      return;
-    }
-
-    drawEmojiSticker(previewCtx, face);
-  });
+  state.faces.forEach((face) => drawEmojiSticker(previewCtx, face));
 }
 
 function drawFaceOutline(face, index) {
   const { x, y, width, height } = face.box;
   const selected = face.id === state.selectedFaceId;
-  const stroke = face.excluded ? "#d83d47" : selected ? "#2f58f0" : "#20a960";
-  const lineWidth = selected ? 3 : 2;
 
   overlayCtx.save();
-  overlayCtx.strokeStyle = stroke;
-  overlayCtx.lineWidth = lineWidth;
+  overlayCtx.strokeStyle = selected ? "#2f58f0" : "#20a960";
+  overlayCtx.lineWidth = selected ? 3 : 2;
   overlayCtx.strokeRect(x, y, width, height);
 
-  const effectOpacity = opacityToPercent(readFaceOpacityForMode(face, face.mode));
-  const label = `${index + 1} · ${face.mode === "emoji" ? face.emoji : "BLUR"} ${effectOpacity}% ${face.excluded ? "(EXCLUDED)" : ""}`;
-  overlayCtx.font = "16px sans-serif";
+  const label = `${index + 1} · ${face.emoji} · ${opacityToPercent(face.opacity)}%`;
+  overlayCtx.font = "15px sans-serif";
   const metrics = overlayCtx.measureText(label);
   const labelWidth = metrics.width + 10;
   const labelHeight = 22;
@@ -299,6 +213,7 @@ function drawDraftRect() {
   if (!state.draftRect) {
     return;
   }
+
   const { x, y, width, height } = state.draftRect;
   overlayCtx.save();
   overlayCtx.strokeStyle = "#2f58f0";
@@ -318,53 +233,23 @@ function drawOverlay() {
 }
 
 function renderAll() {
+  syncQuickUploadHint();
   drawPreview();
   drawOverlay();
-  syncSelectedFacePanel();
-}
-
-function normalizeBox(box) {
-  const maxWidth = refs.previewCanvas.width;
-  const maxHeight = refs.previewCanvas.height;
-  const x = Math.max(0, box.x);
-  const y = Math.max(0, box.y);
-  const width = Math.min(box.width, maxWidth - x);
-  const height = Math.min(box.height, maxHeight - y);
-
-  return {
-    x,
-    y,
-    width: Math.max(1, width),
-    height: Math.max(1, height),
-  };
-}
-
-function createFace(box, expression = "neutral", manual = false) {
-  const normalizedExpression = expressionToEmoji[expression] ? expression : "neutral";
-  return {
-    id: makeFaceId(),
-    box: normalizeBox(box),
-    mode: state.defaultMode,
-    excluded: false,
-    manual,
-    expression: normalizedExpression,
-    emoji: expressionToEmoji[normalizedExpression],
-    emojiOpacity: state.defaultEmojiOpacity,
-    blurOpacity: state.defaultBlurOpacity,
-  };
+  syncControlsForSelection();
 }
 
 async function detectFaces() {
   if (!state.modelsReady) {
-    setStatus("AI models are still loading. Please wait a moment.", true);
+    setStatus("AI models are still loading. Please wait.", true);
     return;
   }
   if (!state.image) {
-    setStatus("Upload a photo first to start detection.", true);
+    setStatus("Quick upload an image first.", true);
     return;
   }
 
-  setStatus("Detecting faces and reading expressions...");
+  setStatus("Detecting faces...");
   try {
     const options = new faceapi.TinyFaceDetectorOptions({
       inputSize: 416,
@@ -377,31 +262,34 @@ async function detectFaces() {
 
     state.faces = detections.map((det) => {
       const expression = pickExpression(det.expressions);
-      return createFace(det.detection.box, expression, false);
+      const emoji = expressionToEmoji[expression] || state.defaultEmoji;
+      return createFace({
+        box: det.detection.box,
+        expression,
+        emoji,
+        opacity: state.defaultOpacity,
+      });
     });
+
     state.selectedFaceId = state.faces[0]?.id ?? null;
     renderAll();
 
     if (state.faces.length === 0) {
-      setStatus("No faces found automatically. Try Add Face Manually.");
+      setStatus("No faces detected. Use Manual and drag on preview.");
       return;
     }
-    setStatus(`Auto-detected ${state.faces.length} face(s).`);
+
+    setStatus(`Auto detected ${state.faces.length} face(s).`);
   } catch (error) {
     console.error(error);
-    setStatus("An error occurred while detecting faces.", true);
+    setStatus("Detection failed. Please try another photo.", true);
   }
 }
 
 function findFaceAtPoint(x, y) {
   for (let i = state.faces.length - 1; i >= 0; i -= 1) {
     const { box } = state.faces[i];
-    if (
-      x >= box.x &&
-      x <= box.x + box.width &&
-      y >= box.y &&
-      y <= box.y + box.height
-    ) {
+    if (x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height) {
       return state.faces[i];
     }
   }
@@ -425,11 +313,7 @@ function setManualMode(active) {
   state.manualMode = active;
   refs.manualBtn.classList.toggle("active", active);
   refs.overlayCanvas.style.cursor = active ? "crosshair" : "pointer";
-  if (active) {
-    setStatus("Manual mode on: drag on the preview to add a missed face.");
-  } else {
-    setStatus("Normal mode on: click a face in the preview to select it.");
-  }
+  setStatus(active ? "Manual on: drag in photo to add emoji." : "Manual off: click face to edit.");
 }
 
 function loadImageFromFile(file) {
@@ -442,7 +326,7 @@ function loadImageFromFile(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Unable to read this image file."));
+      reject(new Error("Unable to read image file."));
     };
     image.src = url;
   });
@@ -453,7 +337,7 @@ async function onFileSelected(file) {
     return;
   }
   if (!file.type.startsWith("image/")) {
-    setStatus("Please upload an image file only.", true);
+    setStatus("Please upload an image file.", true);
     return;
   }
 
@@ -471,23 +355,41 @@ async function onFileSelected(file) {
     await detectFaces();
   } catch (error) {
     console.error(error);
-    setStatus("An error occurred while uploading the image.", true);
+    setStatus("Image upload failed.", true);
   }
 }
 
-function handleDropZoneEvents() {
-  refs.dropzone.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    refs.dropzone.classList.add("dragover");
+function setupQuickUploadArea() {
+  refs.imageInput.addEventListener("change", (event) => {
+    const [file] = event.target.files || [];
+    onFileSelected(file);
   });
 
-  refs.dropzone.addEventListener("dragleave", () => {
-    refs.dropzone.classList.remove("dragover");
+  refs.canvasContainer.addEventListener("click", () => {
+    if (!state.image) {
+      refs.imageInput.click();
+    }
   });
 
-  refs.dropzone.addEventListener("drop", (event) => {
+  refs.canvasContainer.addEventListener("keydown", (event) => {
+    if ((event.key === "Enter" || event.key === " ") && !state.image) {
+      event.preventDefault();
+      refs.imageInput.click();
+    }
+  });
+
+  refs.canvasContainer.addEventListener("dragover", (event) => {
     event.preventDefault();
-    refs.dropzone.classList.remove("dragover");
+    refs.canvasContainer.classList.add("dragover");
+  });
+
+  refs.canvasContainer.addEventListener("dragleave", () => {
+    refs.canvasContainer.classList.remove("dragover");
+  });
+
+  refs.canvasContainer.addEventListener("drop", (event) => {
+    event.preventDefault();
+    refs.canvasContainer.classList.remove("dragover");
     const [file] = event.dataTransfer?.files || [];
     onFileSelected(file);
   });
@@ -505,20 +407,13 @@ function setupCanvasInteractions() {
     if (!targetFace) {
       state.selectedFaceId = null;
       renderAll();
-      setStatus("No face selected. Click a face box in the preview.");
+      setStatus("No face selected.");
       return;
     }
 
     state.selectedFaceId = targetFace.id;
-
-    if (event.shiftKey || event.altKey) {
-      targetFace.excluded = !targetFace.excluded;
-      setStatus(targetFace.excluded ? "Selected face is now excluded." : "Selected face is restored.");
-    } else {
-      setStatus("Face selected. Adjust options in the right panel.");
-    }
-
     renderAll();
+    setStatus("Face selected. Change emoji or opacity.");
   });
 
   refs.overlayCanvas.addEventListener("pointerdown", (event) => {
@@ -553,16 +448,23 @@ function setupCanvasInteractions() {
     if (!state.drawing) {
       return;
     }
+
     state.drawing = false;
     if (refs.overlayCanvas.hasPointerCapture(event.pointerId)) {
       refs.overlayCanvas.releasePointerCapture(event.pointerId);
     }
 
     if (state.draftRect && state.draftRect.width >= 20 && state.draftRect.height >= 20) {
-      const face = createFace(state.draftRect, "neutral", true);
+      const face = createFace({
+        box: state.draftRect,
+        emoji: state.defaultEmoji,
+        opacity: state.defaultOpacity,
+        expression: "manual",
+        manual: true,
+      });
       state.faces.push(face);
       state.selectedFaceId = face.id;
-      setStatus("Manual face area added.");
+      setStatus("Emoji face added by drag.");
     }
 
     state.drawStart = null;
@@ -581,13 +483,7 @@ function setupCanvasInteractions() {
   });
 }
 
-
 function setupControlEvents() {
-  refs.imageInput.addEventListener("change", (event) => {
-    const [file] = event.target.files || [];
-    onFileSelected(file);
-  });
-
   refs.detectBtn.addEventListener("click", () => {
     detectFaces();
   });
@@ -602,93 +498,39 @@ function setupControlEvents() {
     state.draftRect = null;
     setManualMode(false);
     renderAll();
-    setStatus("Face data has been reset.");
+    setStatus("Faces reset.");
   });
 
-  refs.defaultModeSelect.addEventListener("change", (event) => {
-    state.defaultMode = event.target.value;
-  });
+  refs.emojiSelect.addEventListener("change", (event) => {
+    const emoji = event.target.value;
+    state.defaultEmoji = emoji;
 
-  refs.defaultEmojiOpacityRange.addEventListener("input", (event) => {
-    state.defaultEmojiOpacity = clampOpacity(Number(event.target.value) / 100);
-    refs.defaultEmojiOpacityValue.textContent = `${opacityToPercent(state.defaultEmojiOpacity)}%`;
-  });
-
-  refs.defaultBlurOpacityRange.addEventListener("input", (event) => {
-    state.defaultBlurOpacity = clampOpacity(Number(event.target.value) / 100);
-    refs.defaultBlurOpacityValue.textContent = `${opacityToPercent(state.defaultBlurOpacity)}%`;
-  });
-
-  refs.applyDefaultBtn.addEventListener("click", () => {
-    if (state.faces.length === 0) {
-      setStatus("There are no faces to apply this style to.");
-      return;
-    }
-    state.faces = state.faces.map((face) => ({ ...face, mode: state.defaultMode }));
-    renderAll();
-    setStatus(`Updated all faces to ${state.defaultMode === "emoji" ? "Emoji" : "Blur"}.`);
-  });
-
-  refs.applyOpacityDefaultsBtn.addEventListener("click", () => {
-    if (state.faces.length === 0) {
-      setStatus("There are no faces to apply opacity settings to.");
-      return;
-    }
-
-    state.faces = state.faces.map((face) => ({
-      ...face,
-      emojiOpacity: state.defaultEmojiOpacity,
-      blurOpacity: state.defaultBlurOpacity,
-    }));
-    renderAll();
-    setStatus("Applied default emoji/blur opacity to all faces.");
-  });
-
-  refs.selectedModeSelect.addEventListener("change", (event) => {
     const selected = getSelectedFace();
-    if (!selected) {
+    if (selected) {
+      selected.emoji = emoji;
+      renderAll();
+      setStatus("Selected face emoji updated.");
       return;
     }
-    selected.mode = event.target.value;
-    syncSelectedOpacityControl(selected);
-    renderAll();
+
+    setStatus("Default emoji updated. Drag in manual mode to add.");
   });
 
-  refs.selectedOpacityRange.addEventListener("input", (event) => {
-    const selected = getSelectedFace();
-    if (!selected) {
-      return;
-    }
-
+  refs.opacityRange.addEventListener("input", (event) => {
     const opacity = clampOpacity(Number(event.target.value) / 100);
-    setFaceOpacityForMode(selected, selected.mode, opacity);
-    refs.selectedOpacityValue.textContent = `${opacityToPercent(opacity)}%`;
-    renderAll();
-  });
+    state.defaultOpacity = opacity;
+    refs.opacityValue.textContent = `${opacityToPercent(opacity)}%`;
 
-  refs.excludeCheckbox.addEventListener("change", (event) => {
     const selected = getSelectedFace();
-    if (!selected) {
-      return;
+    if (selected) {
+      selected.opacity = opacity;
+      renderAll();
     }
-    selected.excluded = event.target.checked;
-    renderAll();
-  });
-
-  refs.removeFaceBtn.addEventListener("click", () => {
-    const selected = getSelectedFace();
-    if (!selected) {
-      return;
-    }
-    state.faces = state.faces.filter((face) => face.id !== selected.id);
-    state.selectedFaceId = state.faces[0]?.id ?? null;
-    renderAll();
-    setStatus("Selected face has been deleted.");
   });
 
   refs.downloadBtn.addEventListener("click", () => {
     if (!state.image) {
-      setStatus("There is no edited image to download yet.", true);
+      setStatus("No edited image to download yet.", true);
       return;
     }
     drawPreview();
@@ -707,26 +549,23 @@ async function loadModels() {
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]);
     state.modelsReady = true;
-    setStatus("Models are ready. Upload a photo to auto-detect faces.");
+    setStatus("Models ready. Quick upload in Live Preview.");
   } catch (error) {
     console.error(error);
-    setStatus("Failed to load models. Check your network connection.", true);
+    setStatus("Failed to load AI models.", true);
   }
 }
 
 async function init() {
   refs.canvasStage.style.width = "100%";
   refs.overlayCanvas.style.cursor = "pointer";
-  refs.selectedModeSelect.disabled = true;
-  refs.selectedOpacityRange.disabled = true;
-  refs.excludeCheckbox.disabled = true;
-  refs.removeFaceBtn.disabled = true;
+  refs.emojiSelect.value = state.defaultEmoji;
+  syncOpacityControl(state.defaultOpacity);
+  syncQuickUploadHint();
 
-  syncDefaultOpacityControls();
-  syncSelectedOpacityControl(null);
+  setupQuickUploadArea();
   setupControlEvents();
   setupCanvasInteractions();
-  handleDropZoneEvents();
 
   window.addEventListener("resize", () => {
     if (!state.image) {
