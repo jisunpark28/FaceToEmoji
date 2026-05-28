@@ -21,6 +21,12 @@ const state = {
   drawing: false,
   drawStart: null,
   draftRect: null,
+  editDragging: false,
+  editDragMode: null,
+  editDragFaceId: null,
+  editDragStart: null,
+  editDragStartBox: null,
+  editDragStartSize: 1,
   defaultEmoji: "🙂",
   defaultOpacity: 1,
   defaultSize: 1,
@@ -107,6 +113,18 @@ function getSelectedFace() {
   return state.faces.find((face) => face.id === state.selectedFaceId) || null;
 }
 
+function updateOverlayCursor() {
+  if (state.manualMode) {
+    refs.overlayCanvas.style.cursor = "crosshair";
+    return;
+  }
+  if (state.editMode) {
+    refs.overlayCanvas.style.cursor = "grab";
+    return;
+  }
+  refs.overlayCanvas.style.cursor = "pointer";
+}
+
 function syncQuickUploadHint() {
   const hasImage = Boolean(state.image);
   refs.quickUploadHint.style.display = hasImage ? "none" : "grid";
@@ -128,6 +146,7 @@ function syncSizeControl(size) {
 function setEditMode(active, announce = true) {
   state.editMode = active;
   refs.editBtn.classList.toggle("active", active);
+  updateOverlayCursor();
   syncControlsForSelection();
 
   if (!announce) {
@@ -135,7 +154,7 @@ function setEditMode(active, announce = true) {
   }
 
   if (active) {
-    setStatus("Edit mode on: click an emoji to edit size, opacity, emoji, or delete.");
+    setStatus("Edit mode on: click emoji, drag to move, and drag corner handle to resize.");
     return;
   }
 
@@ -159,7 +178,7 @@ function syncControlsForSelection() {
   }
 
   if (!canEditSelected) {
-    refs.selectedFaceMeta.textContent = "Edit mode on. Click an emoji on preview to edit it.";
+    refs.selectedFaceMeta.textContent = "Edit mode on. Click an emoji, drag to move, or drag corner to resize.";
     refs.emojiSelect.disabled = true;
     refs.opacityRange.disabled = true;
     refs.sizeRange.disabled = true;
@@ -306,6 +325,16 @@ function drawFaceOutline(face, index) {
   overlayCtx.fillStyle = "#fff";
   overlayCtx.textBaseline = "middle";
   overlayCtx.fillText(label, labelX + 5, labelY + labelHeight / 2);
+
+  if (state.editMode && selected) {
+    const handle = getResizeHandleRect(face);
+    overlayCtx.fillStyle = "#ffffff";
+    overlayCtx.strokeStyle = "#2f58f0";
+    overlayCtx.lineWidth = 2;
+    overlayCtx.fillRect(handle.x, handle.y, handle.width, handle.height);
+    overlayCtx.strokeRect(handle.x, handle.y, handle.width, handle.height);
+  }
+
   overlayCtx.restore();
 }
 
@@ -434,8 +463,8 @@ function buildDraftRect(start, point, lockSquare = false) {
 function setManualMode(active) {
   state.manualMode = active;
   refs.manualBtn.classList.toggle("active", active);
-  refs.overlayCanvas.style.cursor = active ? "crosshair" : "pointer";
-  setStatus(active ? "Manual on: drag in photo to add emoji (hold Shift for perfect square)." : "Manual off: click face to edit.");
+  updateOverlayCursor();
+  setStatus(active ? "Manual on: drag in photo to add emoji." : "Manual off.");
 }
 
 function loadImageFromFile(file) {
@@ -532,6 +561,29 @@ function setupQuickUploadArea() {
   });
 }
 
+function getFaceById(faceId) {
+  return state.faces.find((face) => face.id === faceId) || null;
+}
+
+function getResizeHandleRect(face) {
+  const handleSize = 14;
+  return {
+    x: face.box.x + face.box.width - handleSize / 2,
+    y: face.box.y + face.box.height - handleSize / 2,
+    width: handleSize,
+    height: handleSize,
+  };
+}
+
+function isPointInRect(point, rect) {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
 function setupCanvasInteractions() {
   refs.overlayCanvas.addEventListener("click", (event) => {
     if (!state.image || state.manualMode || state.drawing) {
@@ -554,11 +606,38 @@ function setupCanvasInteractions() {
   });
 
   refs.overlayCanvas.addEventListener("pointerdown", (event) => {
-    if (!state.image || !state.manualMode) {
+    if (!state.image) {
       return;
     }
-    refs.overlayCanvas.setPointerCapture(event.pointerId);
+
     const point = toCanvasPoint(event);
+
+    if (state.editMode && !state.manualMode) {
+      const targetFace = findFaceAtPoint(point.x, point.y);
+      if (!targetFace) {
+        return;
+      }
+
+      state.selectedFaceId = targetFace.id;
+      const handleRect = getResizeHandleRect(targetFace);
+      state.editDragging = true;
+      state.editDragMode = isPointInRect(point, handleRect) ? "resize" : "move";
+      state.editDragFaceId = targetFace.id;
+      state.editDragStart = point;
+      state.editDragStartBox = { ...targetFace.box };
+      state.editDragStartSize = targetFace.size ?? 1;
+
+      refs.overlayCanvas.setPointerCapture(event.pointerId);
+      renderAll();
+      setStatus(state.editDragMode === "resize" ? "Drag to resize selected emoji." : "Drag to move selected emoji.");
+      return;
+    }
+
+    if (!state.manualMode) {
+      return;
+    }
+
+    refs.overlayCanvas.setPointerCapture(event.pointerId);
     state.drawing = true;
     state.drawStart = point;
     state.draftRect = { x: point.x, y: point.y, width: 0, height: 0 };
@@ -566,24 +645,64 @@ function setupCanvasInteractions() {
   });
 
   refs.overlayCanvas.addEventListener("pointermove", (event) => {
+    const point = toCanvasPoint(event);
+
+    if (state.editDragging && state.editDragStart && state.editDragFaceId) {
+      const targetFace = getFaceById(state.editDragFaceId);
+      if (!targetFace) {
+        return;
+      }
+
+      if (state.editDragMode === "move") {
+        const dx = point.x - state.editDragStart.x;
+        const dy = point.y - state.editDragStart.y;
+        const maxX = Math.max(0, refs.previewCanvas.width - state.editDragStartBox.width);
+        const maxY = Math.max(0, refs.previewCanvas.height - state.editDragStartBox.height);
+        targetFace.box.x = Math.min(maxX, Math.max(0, state.editDragStartBox.x + dx));
+        targetFace.box.y = Math.min(maxY, Math.max(0, state.editDragStartBox.y + dy));
+      } else if (state.editDragMode === "resize") {
+        const centerX = state.editDragStartBox.x + state.editDragStartBox.width / 2;
+        const centerY = state.editDragStartBox.y + state.editDragStartBox.height / 2;
+        const startDistance = Math.hypot(state.editDragStart.x - centerX, state.editDragStart.y - centerY) || 1;
+        const currentDistance = Math.hypot(point.x - centerX, point.y - centerY);
+        const scale = currentDistance / startDistance;
+        targetFace.size = clampSize(state.editDragStartSize * scale);
+      }
+
+      renderAll();
+      return;
+    }
+
     if (!state.drawing || !state.drawStart) {
       return;
     }
 
-    const point = toCanvasPoint(event);
     state.draftRect = buildDraftRect(state.drawStart, point, event.shiftKey);
     drawOverlay();
   });
 
   refs.overlayCanvas.addEventListener("pointerup", (event) => {
+    if (refs.overlayCanvas.hasPointerCapture(event.pointerId)) {
+      refs.overlayCanvas.releasePointerCapture(event.pointerId);
+    }
+
+    if (state.editDragging) {
+      state.editDragging = false;
+      state.editDragMode = null;
+      state.editDragFaceId = null;
+      state.editDragStart = null;
+      state.editDragStartBox = null;
+      state.editDragStartSize = 1;
+      renderAll();
+      setStatus("Selected emoji updated by mouse drag.");
+      return;
+    }
+
     if (!state.drawing) {
       return;
     }
 
     state.drawing = false;
-    if (refs.overlayCanvas.hasPointerCapture(event.pointerId)) {
-      refs.overlayCanvas.releasePointerCapture(event.pointerId);
-    }
 
     if (state.draftRect && state.draftRect.width >= 20 && state.draftRect.height >= 20) {
       const face = createFace({
@@ -605,12 +724,21 @@ function setupCanvasInteractions() {
   });
 
   refs.overlayCanvas.addEventListener("pointercancel", () => {
-    if (!state.drawing) {
-      return;
+    if (state.editDragging) {
+      state.editDragging = false;
+      state.editDragMode = null;
+      state.editDragFaceId = null;
+      state.editDragStart = null;
+      state.editDragStartBox = null;
+      state.editDragStartSize = 1;
     }
-    state.drawing = false;
-    state.drawStart = null;
-    state.draftRect = null;
+
+    if (state.drawing) {
+      state.drawing = false;
+      state.drawStart = null;
+      state.draftRect = null;
+    }
+
     drawOverlay();
   });
 
@@ -633,7 +761,7 @@ function setupCanvasInteractions() {
         return;
       }
 
-      const step = event.shiftKey ? 0.01 : 0.02;
+      const step = 0.02;
       const delta = event.deltaY < 0 ? step : -step;
       selected.opacity = clampOpacity(selected.opacity + delta);
       renderAll();
@@ -748,9 +876,9 @@ async function loadModels() {
 
 async function init() {
   refs.canvasStage.style.width = "100%";
-  refs.overlayCanvas.style.cursor = "pointer";
   refs.emojiSelect.value = state.defaultEmoji;
   refs.editBtn.classList.remove("active");
+  updateOverlayCursor();
   syncSizeControl(state.defaultSize);
   renderAll();
 
