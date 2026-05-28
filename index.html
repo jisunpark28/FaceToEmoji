@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaceToEmoji</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <h1>FaceToEmoji</h1>
+        <p>사진 속 얼굴을 자동 인식해 이모지 또는 블러로 빠르게 변환하세요.</p>
+      </header>
+
+      <main class="layout">
+        <section class="card controls">
+          <h2>사진 업로드</h2>
+          <label id="dropzone" class="dropzone" for="imageInput">
+            <input id="imageInput" type="file" accept="image/*" />
+            <span>파일을 드래그해서 놓거나 클릭해 선택</span>
+          </label>
+
+          <p id="statusText" class="status">모델 로딩 중...</p>
+
+          <div class="button-row">
+            <button id="detectBtn" type="button">자동 얼굴 인식</button>
+            <button id="manualBtn" type="button">수동 얼굴 추가</button>
+            <button id="clearBtn" type="button">얼굴 정보 초기화</button>
+          </div>
+
+          <div class="field-group">
+            <label for="defaultModeSelect">기본 처리 방식</label>
+            <select id="defaultModeSelect">
+              <option value="emoji">이모지</option>
+              <option value="blur">블러</option>
+            </select>
+            <button id="applyDefaultBtn" type="button">현재 얼굴 전체 적용</button>
+          </div>
+
+          <div class="selected-panel">
+            <h3>선택된 얼굴 설정</h3>
+            <p id="selectedFaceMeta" class="muted">얼굴을 선택해 상세 설정</p>
+            <div class="field-group">
+              <label for="selectedModeSelect">처리 방식</label>
+              <select id="selectedModeSelect">
+                <option value="emoji">이모지</option>
+                <option value="blur">블러</option>
+              </select>
+            </div>
+            <label class="checkbox-row">
+              <input id="excludeCheckbox" type="checkbox" />
+              제외(변환하지 않기)
+            </label>
+            <button id="removeFaceBtn" type="button" class="danger">선택 얼굴 삭제</button>
+          </div>
+
+          <button id="downloadBtn" type="button" class="primary">변환 이미지 다운로드</button>
+        </section>
+
+        <section class="card editor">
+          <h2>미리보기</h2>
+          <p class="muted">일반 모드에서 얼굴을 클릭하면 제외/복원이 토글됩니다.</p>
+          <div id="canvasContainer" class="canvas-container">
+            <div id="canvasStage" class="canvas-stage">
+              <canvas id="previewCanvas"></canvas>
+              <canvas id="overlayCanvas"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="card faces">
+          <h2>인식된 얼굴 목록</h2>
+          <ul id="faceList" class="face-list">
+            <li class="empty">아직 인식된 얼굴이 없습니다.</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script defer src="./app.js"></script>
+  </body>
+</html>
