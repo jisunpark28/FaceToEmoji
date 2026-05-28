@@ -5,6 +5,16 @@ const DETECTION_PASSES = [
   { inputSize: 512, scoreThreshold: 0.22 },
   { inputSize: 416, scoreThreshold: 0.28 },
 ];
+const TILE_DETECTION_PASSES = [
+  { inputSize: 608, scoreThreshold: 0.14 },
+  { inputSize: 512, scoreThreshold: 0.18 },
+];
+const TILE_SCAN_MIN_LONG_EDGE = 1400;
+const TILE_SCAN_CONFIG = {
+  initialTileSize: 1200,
+  overlapRatio: 0.28,
+  maxTiles: 12,
+};
 
 const expressionToEmoji = {
   neutral: "🙂",
@@ -194,10 +204,10 @@ function buildUpscaledDetectionSource(image) {
   return { canvas, scale: upscale };
 }
 
-async function runDetectionPasses(source, sourceScale = 1) {
+async function runDetectionPasses(source, sourceScale = 1, passes = DETECTION_PASSES) {
   let allDetections = [];
 
-  for (const pass of DETECTION_PASSES) {
+  for (const pass of passes) {
     const options = new faceapi.TinyFaceDetectorOptions({
       inputSize: pass.inputSize,
       scoreThreshold: pass.scoreThreshold,
@@ -223,6 +233,131 @@ async function runDetectionPasses(source, sourceScale = 1) {
   }
 
   return allDetections;
+}
+
+function buildAxisTileStarts(total, tileSize, step) {
+  if (total <= tileSize) {
+    return [0];
+  }
+
+  const starts = [];
+  for (let start = 0; start <= total - tileSize; start += step) {
+    starts.push(start);
+  }
+
+  const lastStart = total - tileSize;
+  if (starts[starts.length - 1] !== lastStart) {
+    starts.push(lastStart);
+  }
+
+  return starts;
+}
+
+function buildTileRegions(width, height, config = TILE_SCAN_CONFIG) {
+  const longEdge = Math.max(width, height);
+  let tileSize = Math.min(config.initialTileSize, longEdge);
+
+  while (true) {
+    const step = Math.max(120, Math.round(tileSize * (1 - config.overlapRatio)));
+    const xStarts = buildAxisTileStarts(width, tileSize, step);
+    const yStarts = buildAxisTileStarts(height, tileSize, step);
+
+    const regions = [];
+    yStarts.forEach((y) => {
+      xStarts.forEach((x) => {
+        regions.push({
+          x,
+          y,
+          width: Math.min(tileSize, width - x),
+          height: Math.min(tileSize, height - y),
+        });
+      });
+    });
+
+    if (regions.length <= config.maxTiles || tileSize >= longEdge) {
+      return regions;
+    }
+
+    tileSize = Math.min(Math.round(tileSize * 1.2), longEdge);
+  }
+}
+
+function shouldRunTileScan(image, baselineDetectionCount) {
+  const longEdge = Math.max(image.width, image.height);
+  if (longEdge < TILE_SCAN_MIN_LONG_EDGE) {
+    return false;
+  }
+
+  const expectedFaces = Math.max(10, Math.round(longEdge / 180));
+  return baselineDetectionCount < expectedFaces;
+}
+
+async function runTiledDetectionPasses(image) {
+  const regions = buildTileRegions(image.width, image.height);
+  if (regions.length === 0) {
+    return [];
+  }
+
+  const tileCanvas = document.createElement("canvas");
+  const tileCtx = tileCanvas.getContext("2d");
+  if (!tileCtx) {
+    return [];
+  }
+
+  const candidates = [];
+
+  for (const region of regions) {
+    tileCanvas.width = region.width;
+    tileCanvas.height = region.height;
+    tileCtx.clearRect(0, 0, region.width, region.height);
+    tileCtx.drawImage(
+      image,
+      region.x,
+      region.y,
+      region.width,
+      region.height,
+      0,
+      0,
+      region.width,
+      region.height,
+    );
+
+    const tileDetections = await runDetectionPasses(tileCanvas, 1, TILE_DETECTION_PASSES);
+    const edgePadding = Math.max(6, Math.min(region.width, region.height) * 0.03);
+
+    tileDetections.forEach((det) => {
+      const center = getBoxCenter(det.box);
+      const nearLeftEdge = center.x < edgePadding;
+      const nearRightEdge = center.x > region.width - edgePadding;
+      const nearTopEdge = center.y < edgePadding;
+      const nearBottomEdge = center.y > region.height - edgePadding;
+
+      if (nearLeftEdge && region.x > 0) {
+        return;
+      }
+      if (nearRightEdge && region.x + region.width < image.width) {
+        return;
+      }
+      if (nearTopEdge && region.y > 0) {
+        return;
+      }
+      if (nearBottomEdge && region.y + region.height < image.height) {
+        return;
+      }
+
+      candidates.push({
+        ...det,
+        box: {
+          x: det.box.x + region.x,
+          y: det.box.y + region.y,
+          width: det.box.width,
+          height: det.box.height,
+        },
+      });
+    });
+  }
+
+  return candidates;
 }
 
 function getSelectedFace() {
@@ -505,12 +640,19 @@ async function detectFaces() {
 
   setStatus("Detecting faces (multi-pass for small faces)...");
   try {
-    let detectionCandidates = await runDetectionPasses(state.image, 1);
+    let detectionCandidates = await runDetectionPasses(state.image, 1, DETECTION_PASSES);
 
     const upscaledSource = buildUpscaledDetectionSource(state.image);
     if (upscaledSource) {
-      const upscaledDetections = await runDetectionPasses(upscaledSource.canvas, upscaledSource.scale);
+      const upscaledDetections = await runDetectionPasses(upscaledSource.canvas, upscaledSource.scale, DETECTION_PASSES);
       detectionCandidates = detectionCandidates.concat(upscaledDetections);
+    }
+
+    const baselineDetections = dedupeDetections(detectionCandidates);
+    if (shouldRunTileScan(state.image, baselineDetections.length)) {
+      setStatus("Detecting small faces with tile scan...");
+      const tileDetections = await runTiledDetectionPasses(state.image);
+      detectionCandidates = detectionCandidates.concat(tileDetections);
     }
 
     const mergedDetections = dedupeDetections(detectionCandidates);
