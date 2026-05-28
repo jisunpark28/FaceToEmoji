@@ -211,7 +211,7 @@ function clearLoadedImage() {
   setManualMode(false);
   setEditMode(false, false);
   renderAll();
-  setStatus("Image removed. Upload a new photo.");
+  setStatus("");
 }
 
 function normalizeBox(box) {
