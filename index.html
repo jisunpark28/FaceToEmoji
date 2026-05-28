@@ -17,11 +17,15 @@
         <section class="card editor">
           <h2>Live Preview</h2>
           <p class="muted">
-            Quick Upload: drop an image here or click preview. In Manual, hold Shift for square drag; use mouse wheel for opacity fine-tune.
+            Quick Upload: drop an image here or click preview. Use + to replace, X to remove. In Manual, hold Shift for square drag; use mouse wheel for opacity fine-tune.
           </p>
 
           <div id="canvasContainer" class="canvas-container" role="button" tabindex="0" aria-label="Quick upload area">
             <input id="imageInput" type="file" accept="image/*" />
+            <div id="previewActions" class="preview-actions">
+              <button id="replaceImageBtn" type="button" aria-label="Replace image">+</button>
+              <button id="removeImageBtn" type="button" aria-label="Remove image">×</button>
+            </div>
             <div id="quickUploadHint" class="quick-upload-hint">
               <strong>Quick Upload</strong>
               <span>Drop image here, or click to upload</span>
@@ -58,9 +62,9 @@
             <div class="slider-group">
               <div class="slider-header">
                 <label for="opacityRange">Opacity</label>
-                <span id="opacityValue" class="slider-value">95%</span>
+                <span id="opacityValue" class="slider-value">100%</span>
               </div>
-              <input id="opacityRange" type="range" min="10" max="100" value="95" step="1" />
+              <input id="opacityRange" type="range" min="0" max="100" value="100" step="1" />
             </div>
           </div>
 

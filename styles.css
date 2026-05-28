@@ -82,7 +82,6 @@ h2 {
   cursor: pointer;
 }
 
-
 .canvas-container.dragover {
   border-color: var(--primary);
   background: #eaf0ff;
@@ -116,6 +115,38 @@ h2 {
 
 #imageInput {
   display: none;
+}
+
+.preview-actions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  display: none;
+  gap: 8px;
+}
+
+.preview-actions button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid #c9d4ee;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1f325f;
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-actions button:hover {
+  border-color: var(--primary);
+  background: #eef3ff;
 }
 
 .quick-upload-hint {
@@ -250,6 +281,20 @@ input[type="range"] {
 
   .canvas-container {
     min-height: 280px;
+  }
+
+  .preview-actions {
+    top: 12px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .preview-actions button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    font-size: 1rem;
   }
 
   .button-row {

@@ -21,7 +21,7 @@ const state = {
   drawStart: null,
   draftRect: null,
   defaultEmoji: "🙂",
-  defaultOpacity: 0.95,
+  defaultOpacity: 1,
 };
 
 const refs = {
@@ -29,6 +29,9 @@ const refs = {
   canvasContainer: document.getElementById("canvasContainer"),
   canvasStage: document.getElementById("canvasStage"),
   quickUploadHint: document.getElementById("quickUploadHint"),
+  previewActions: document.getElementById("previewActions"),
+  replaceImageBtn: document.getElementById("replaceImageBtn"),
+  removeImageBtn: document.getElementById("removeImageBtn"),
   previewCanvas: document.getElementById("previewCanvas"),
   overlayCanvas: document.getElementById("overlayCanvas"),
   statusText: document.getElementById("statusText"),
@@ -61,7 +64,7 @@ function clampOpacity(value) {
   if (Number.isNaN(value)) {
     return 1;
   }
-  return Math.min(1, Math.max(0.1, value));
+  return Math.min(1, Math.max(0, value));
 }
 
 function opacityToPercent(opacity) {
@@ -87,7 +90,9 @@ function getSelectedFace() {
 }
 
 function syncQuickUploadHint() {
-  refs.quickUploadHint.style.display = state.image ? "none" : "grid";
+  const hasImage = Boolean(state.image);
+  refs.quickUploadHint.style.display = hasImage ? "none" : "grid";
+  refs.previewActions.style.display = hasImage ? "flex" : "none";
 }
 
 function syncOpacityControl(opacity) {
@@ -126,6 +131,25 @@ function resizeCanvases(width, height) {
   syncCanvasStageSize(width);
 }
 
+function clearLoadedImage() {
+  state.image = null;
+  state.fileName = "facetoemoji";
+  state.faces = [];
+  state.selectedFaceId = null;
+  state.drawing = false;
+  state.drawStart = null;
+  state.draftRect = null;
+  refs.imageInput.value = "";
+  refs.previewCanvas.width = 0;
+  refs.previewCanvas.height = 0;
+  refs.overlayCanvas.width = 0;
+  refs.overlayCanvas.height = 0;
+  refs.canvasStage.style.width = "100%";
+  setManualMode(false);
+  renderAll();
+  setStatus("Image removed. Upload a new photo.");
+}
+
 function normalizeBox(box) {
   const maxWidth = refs.previewCanvas.width;
   const maxHeight = refs.previewCanvas.height;
@@ -157,16 +181,10 @@ function drawEmojiSticker(ctx, face) {
   const { x, y, width, height } = face.box;
   const cx = x + width / 2;
   const cy = y + height / 2;
-  const radius = Math.max(18, Math.min(width, height) * 0.55);
   const fontSize = Math.max(20, Math.min(width, height) * 0.86);
 
   ctx.save();
   ctx.globalAlpha = clampOpacity(face.opacity);
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = `${fontSize}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
@@ -377,6 +395,8 @@ async function onFileSelected(file) {
   } catch (error) {
     console.error(error);
     setStatus("Image upload failed.", true);
+  } finally {
+    refs.imageInput.value = "";
   }
 }
 
@@ -384,6 +404,19 @@ function setupQuickUploadArea() {
   refs.imageInput.addEventListener("change", (event) => {
     const [file] = event.target.files || [];
     onFileSelected(file);
+  });
+
+  refs.replaceImageBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    refs.imageInput.click();
+  });
+
+  refs.removeImageBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.image) {
+      return;
+    }
+    clearLoadedImage();
   });
 
   refs.canvasContainer.addEventListener("click", () => {
