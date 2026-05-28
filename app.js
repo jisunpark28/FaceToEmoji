@@ -18,7 +18,6 @@ const state = {
   faces: [],
   selectedFaceId: null,
   editMode: false,
-  manualMode: false,
   drawing: false,
   drawStart: null,
   draftRect: null,
@@ -45,7 +44,6 @@ const refs = {
   overlayCanvas: document.getElementById("overlayCanvas"),
   statusText: document.getElementById("statusText"),
   detectBtn: document.getElementById("detectBtn"),
-  manualBtn: document.getElementById("manualBtn"),
   clearBtn: document.getElementById("clearBtn"),
   editBtn: document.getElementById("editBtn"),
   emojiSelect: document.getElementById("emojiSelect"),
@@ -121,15 +119,7 @@ function getSelectedFace() {
 }
 
 function updateOverlayCursor() {
-  if (state.manualMode) {
-    refs.overlayCanvas.style.cursor = "crosshair";
-    return;
-  }
-  if (state.editMode) {
-    refs.overlayCanvas.style.cursor = "grab";
-    return;
-  }
-  refs.overlayCanvas.style.cursor = "pointer";
+  refs.overlayCanvas.style.cursor = state.editMode ? "crosshair" : "pointer";
 }
 
 function syncQuickUploadHint() {
@@ -161,7 +151,7 @@ function setEditMode(active, announce = true) {
   }
 
   if (active) {
-    setStatus("Edit mode on: click emoji, drag to move, and drag corner handle to resize.");
+    setStatus("Edit mode on: drag empty space to add, or click sticker to move/resize.");
     return;
   }
 
@@ -170,10 +160,9 @@ function setEditMode(active, announce = true) {
 
 function syncControlsForSelection() {
   const selected = getSelectedFace();
-  const canEditSelected = state.editMode && Boolean(selected);
 
   if (!state.editMode) {
-    refs.selectedFaceMeta.textContent = "Click an emoji (blue outline) to edit and move it.";
+    refs.selectedFaceMeta.textContent = "Turn on Edit to add stickers, then click one to move or resize.";
     refs.emojiSelect.value = state.defaultEmoji;
     refs.emojiSelect.disabled = true;
     refs.opacityRange.disabled = true;
@@ -184,9 +173,11 @@ function syncControlsForSelection() {
     return;
   }
 
-  if (!canEditSelected) {
-    refs.selectedFaceMeta.textContent = "Edit mode on. Click an emoji, drag to move, or drag corner to resize.";
-    refs.emojiSelect.disabled = true;
+  refs.emojiSelect.disabled = false;
+  refs.emojiSelect.value = selected ? selected.emoji : state.defaultEmoji;
+
+  if (!selected) {
+    refs.selectedFaceMeta.textContent = "Edit mode on. Drag empty space to add sticker, or click one to move/resize.";
     refs.opacityRange.disabled = true;
     refs.sizeRange.disabled = true;
     refs.deleteSelectedBtn.disabled = true;
@@ -196,8 +187,6 @@ function syncControlsForSelection() {
   }
 
   refs.selectedFaceMeta.textContent = `Selected face / Style ${getStickerDisplayLabel(selected.emoji)} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
-  refs.emojiSelect.value = selected.emoji;
-  refs.emojiSelect.disabled = false;
   refs.opacityRange.disabled = false;
   refs.sizeRange.disabled = false;
   refs.deleteSelectedBtn.disabled = false;
@@ -234,7 +223,6 @@ function clearLoadedImage() {
   refs.overlayCanvas.width = 0;
   refs.overlayCanvas.height = 0;
   refs.canvasStage.style.width = "100%";
-  setManualMode(false);
   setEditMode(false, false);
   renderAll();
   setStatus("");
@@ -431,7 +419,7 @@ async function detectFaces() {
     renderAll();
 
     if (state.faces.length === 0) {
-      setStatus("No faces detected. Use Manual and drag on preview.");
+      setStatus("No faces detected. Turn on Edit and drag to add one manually.");
       return;
     }
 
@@ -486,13 +474,6 @@ function buildDraftRect(start, point, lockSquare = false) {
   return { x, y, width, height };
 }
 
-function setManualMode(active) {
-  state.manualMode = active;
-  refs.manualBtn.classList.toggle("active", active);
-  updateOverlayCursor();
-  setStatus(active ? "Manual on: drag in photo to add emoji." : "Manual off.");
-}
-
 function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -527,7 +508,6 @@ async function onFileSelected(file) {
     state.selectedFaceId = null;
     state.draftRect = null;
     resizeCanvases(image.width, image.height);
-    setManualMode(false);
     renderAll();
     await detectFaces();
   } catch (error) {
@@ -611,47 +591,27 @@ function isPointInRect(point, rect) {
 }
 
 function setupCanvasInteractions() {
-  refs.overlayCanvas.addEventListener("click", (event) => {
-    if (!state.image || state.manualMode || state.drawing) {
-      return;
-    }
-
-    const point = toCanvasPoint(event);
-    const targetFace = findFaceAtPoint(point.x, point.y);
-
-    if (!targetFace) {
-      state.selectedFaceId = null;
-      renderAll();
-      setStatus("No face selected.");
-      return;
-    }
-
-    state.selectedFaceId = targetFace.id;
-    if (!state.editMode) {
-      setEditMode(true, false);
-    }
-    renderAll();
-    setStatus("Emoji selected. You can now edit and move it.");
-  });
-
   refs.overlayCanvas.addEventListener("pointerdown", (event) => {
     if (!state.image) {
       return;
     }
 
     const point = toCanvasPoint(event);
+    const targetFace = findFaceAtPoint(point.x, point.y);
 
-    if (!state.manualMode) {
-      const targetFace = findFaceAtPoint(point.x, point.y);
-      if (!targetFace) {
-        return;
+    if (!state.editMode) {
+      state.selectedFaceId = targetFace?.id ?? null;
+      renderAll();
+      if (targetFace) {
+        setStatus("Sticker selected. Turn on Edit to move, resize, or change style.");
+      } else {
+        setStatus("Turn on Edit to drag and add a sticker.");
       }
+      return;
+    }
 
+    if (targetFace) {
       state.selectedFaceId = targetFace.id;
-      if (!state.editMode) {
-        setEditMode(true, false);
-      }
-
       const handleRect = getResizeHandleRect(targetFace);
       state.editDragging = true;
       state.editDragMode = isPointInRect(point, handleRect) ? "resize" : "move";
@@ -662,15 +622,17 @@ function setupCanvasInteractions() {
 
       refs.overlayCanvas.setPointerCapture(event.pointerId);
       renderAll();
-      setStatus(state.editDragMode === "resize" ? "Drag to resize selected emoji." : "Drag to move selected emoji.");
+      setStatus(state.editDragMode === "resize" ? "Drag corner to resize selected sticker." : "Drag selected sticker to move.");
       return;
     }
 
+    state.selectedFaceId = null;
     refs.overlayCanvas.setPointerCapture(event.pointerId);
     state.drawing = true;
     state.drawStart = point;
     state.draftRect = { x: point.x, y: point.y, width: 0, height: 0 };
-    drawOverlay();
+    renderAll();
+    setStatus("Drag to place a new sticker.");
   });
 
   refs.overlayCanvas.addEventListener("pointermove", (event) => {
@@ -706,7 +668,7 @@ function setupCanvasInteractions() {
       return;
     }
 
-    state.draftRect = buildDraftRect(state.drawStart, point, event.shiftKey);
+    state.draftRect = buildDraftRect(state.drawStart, point);
     drawOverlay();
   });
 
@@ -723,7 +685,7 @@ function setupCanvasInteractions() {
       state.editDragStartBox = null;
       state.editDragStartSize = 1;
       renderAll();
-      setStatus("Selected emoji updated by mouse drag.");
+      setStatus("Selected sticker updated by mouse drag.");
       return;
     }
 
@@ -740,11 +702,10 @@ function setupCanvasInteractions() {
         opacity: state.defaultOpacity,
         size: state.defaultSize,
         expression: "manual",
-        manual: true,
       });
       state.faces.push(face);
       state.selectedFaceId = face.id;
-      setStatus("Emoji face added by drag.");
+      setStatus("Sticker added by drag.");
     }
 
     state.drawStart = null;
@@ -779,14 +740,16 @@ function setupCanvasInteractions() {
       }
 
       event.preventDefault();
-      const selected = getSelectedFace();
-      if (!selected) {
-        setStatus("Click an emoji first, then use wheel to adjust opacity.");
+
+      if (!state.editMode) {
+        setStatus("Turn on Edit first to adjust opacity with wheel.");
         return;
       }
 
-      if (!state.editMode) {
-        setEditMode(true, false);
+      const selected = getSelectedFace();
+      if (!selected) {
+        setStatus("Click a sticker first, then use wheel to adjust opacity.");
+        return;
       }
 
       const step = 0.02;
@@ -803,10 +766,6 @@ function setupControlEvents() {
     detectFaces();
   });
 
-  refs.manualBtn.addEventListener("click", () => {
-    setManualMode(!state.manualMode);
-  });
-
   refs.editBtn.addEventListener("click", () => {
     setEditMode(!state.editMode);
   });
@@ -815,40 +774,46 @@ function setupControlEvents() {
     state.faces = [];
     state.selectedFaceId = null;
     state.draftRect = null;
-    setManualMode(false);
+    state.drawing = false;
+    state.editDragging = false;
     renderAll();
-    setStatus("Faces reset.");
+    setStatus("Stickers reset.");
   });
 
   refs.emojiSelect.addEventListener("change", (event) => {
-    const selected = getSelectedFace();
-    if (!selected) {
-      syncControlsForSelection();
-      setStatus("Click an emoji first to change it.");
-      return;
-    }
-
     if (!state.editMode) {
-      setEditMode(true, false);
+      syncControlsForSelection();
+      setStatus("Turn on Edit first to change sticker style.");
+      return;
     }
 
     const emoji = event.target.value;
-    selected.emoji = emoji;
     state.defaultEmoji = emoji;
-    renderAll();
-    setStatus("Selected emoji updated.");
-  });
 
-  refs.opacityRange.addEventListener("input", (event) => {
     const selected = getSelectedFace();
     if (!selected) {
       syncControlsForSelection();
-      setStatus("Click one emoji first to adjust opacity.");
+      setStatus("Sticker style set. Drag on preview to add it.");
       return;
     }
 
+    selected.emoji = emoji;
+    renderAll();
+    setStatus("Selected sticker style updated.");
+  });
+
+  refs.opacityRange.addEventListener("input", (event) => {
     if (!state.editMode) {
-      setEditMode(true, false);
+      syncControlsForSelection();
+      setStatus("Turn on Edit first to adjust opacity.");
+      return;
+    }
+
+    const selected = getSelectedFace();
+    if (!selected) {
+      syncControlsForSelection();
+      setStatus("Click one sticker first to adjust opacity.");
+      return;
     }
 
     const opacity = clampOpacity(Number(event.target.value) / 100);
@@ -857,15 +822,17 @@ function setupControlEvents() {
   });
 
   refs.sizeRange.addEventListener("input", (event) => {
-    const selected = getSelectedFace();
-    if (!selected) {
+    if (!state.editMode) {
       syncControlsForSelection();
-      setStatus("Click one emoji first to adjust size.");
+      setStatus("Turn on Edit first to adjust size.");
       return;
     }
 
-    if (!state.editMode) {
-      setEditMode(true, false);
+    const selected = getSelectedFace();
+    if (!selected) {
+      syncControlsForSelection();
+      setStatus("Click one sticker first to adjust size.");
+      return;
     }
 
     const size = clampSize(Number(event.target.value) / 100);
@@ -874,20 +841,21 @@ function setupControlEvents() {
   });
 
   refs.deleteSelectedBtn.addEventListener("click", () => {
-    const selected = getSelectedFace();
-    if (!selected) {
-      setStatus("Click one emoji first to delete.");
+    if (!state.editMode) {
+      setStatus("Turn on Edit first to delete stickers.");
       return;
     }
 
-    if (!state.editMode) {
-      setEditMode(true, false);
+    const selected = getSelectedFace();
+    if (!selected) {
+      setStatus("Click one sticker first to delete.");
+      return;
     }
 
     state.faces = state.faces.filter((face) => face.id !== selected.id);
     state.selectedFaceId = state.faces[0]?.id ?? null;
     renderAll();
-    setStatus("Selected emoji deleted.");
+    setStatus("Selected sticker deleted.");
   });
 
   refs.downloadBtn.addEventListener("click", () => {

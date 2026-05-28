@@ -183,7 +183,7 @@ h2 {
 .button-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
 }
 
 button,
