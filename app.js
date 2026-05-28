@@ -309,11 +309,32 @@ function toCanvasPoint(pointerEvent) {
   };
 }
 
+function buildDraftRect(start, point, lockSquare = false) {
+  const deltaX = point.x - start.x;
+  const deltaY = point.y - start.y;
+  const baseWidth = Math.abs(deltaX);
+  const baseHeight = Math.abs(deltaY);
+
+  let width = baseWidth;
+  let height = baseHeight;
+
+  if (lockSquare) {
+    const side = Math.min(baseWidth, baseHeight);
+    width = side;
+    height = side;
+  }
+
+  const x = deltaX < 0 ? start.x - width : start.x;
+  const y = deltaY < 0 ? start.y - height : start.y;
+
+  return { x, y, width, height };
+}
+
 function setManualMode(active) {
   state.manualMode = active;
   refs.manualBtn.classList.toggle("active", active);
   refs.overlayCanvas.style.cursor = active ? "crosshair" : "pointer";
-  setStatus(active ? "Manual on: drag in photo to add emoji." : "Manual off: click face to edit.");
+  setStatus(active ? "Manual on: drag in photo to add emoji (hold Shift for perfect square)." : "Manual off: click face to edit.");
 }
 
 function loadImageFromFile(file) {
@@ -432,15 +453,9 @@ function setupCanvasInteractions() {
     if (!state.drawing || !state.drawStart) {
       return;
     }
+
     const point = toCanvasPoint(event);
-    const width = point.x - state.drawStart.x;
-    const height = point.y - state.drawStart.y;
-    state.draftRect = {
-      x: width < 0 ? point.x : state.drawStart.x,
-      y: height < 0 ? point.y : state.drawStart.y,
-      width: Math.abs(width),
-      height: Math.abs(height),
-    };
+    state.draftRect = buildDraftRect(state.drawStart, point, event.shiftKey);
     drawOverlay();
   });
 
@@ -481,6 +496,32 @@ function setupCanvasInteractions() {
     state.draftRect = null;
     drawOverlay();
   });
+
+  refs.overlayCanvas.addEventListener(
+    "wheel",
+    (event) => {
+      if (!state.image) {
+        return;
+      }
+
+      event.preventDefault();
+      const step = event.shiftKey ? 0.01 : 0.02;
+      const delta = event.deltaY < 0 ? step : -step;
+      const selected = getSelectedFace();
+
+      if (selected) {
+        selected.opacity = clampOpacity(selected.opacity + delta);
+        state.defaultOpacity = selected.opacity;
+        renderAll();
+        return;
+      }
+
+      state.defaultOpacity = clampOpacity(state.defaultOpacity + delta);
+      syncOpacityControl(state.defaultOpacity);
+      setStatus(`Default opacity: ${opacityToPercent(state.defaultOpacity)}%`);
+    },
+    { passive: false },
+  );
 }
 
 function setupControlEvents() {
