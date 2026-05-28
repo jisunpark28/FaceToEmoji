@@ -1,5 +1,15 @@
 const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
 const BLUR_CIRCLE_VALUE = "__blur_circle__";
+const TINY_DETECTION_PASSES = [
+  { inputSize: 608, scoreThreshold: 0.22 },
+  { inputSize: 512, scoreThreshold: 0.26 },
+  { inputSize: 416, scoreThreshold: 0.3 },
+];
+const SSD_DETECTION_PASSES = [
+  { minConfidence: 0.2, maxResults: 180 },
+  { minConfidence: 0.15, maxResults: 220 },
+];
+const MIN_FACE_BOX_SIZE = 10;
 
 const expressionToEmoji = {
   neutral: "🙂",
@@ -13,6 +23,7 @@ const expressionToEmoji = {
 
 const state = {
   modelsReady: false,
+  ssdModelReady: false,
   image: null,
   fileName: "facetoemoji",
   faces: [],
@@ -112,6 +123,203 @@ function pickExpression(expressions = {}) {
   });
 
   return chosen;
+}
+
+function normalizeDetectionEntry(det, sourceScale = 1, mirroredWidth = 0) {
+  const rawBox = det?.detection?.box;
+  if (!rawBox) {
+    return null;
+  }
+
+  const scaledBox = {
+    x: rawBox.x / sourceScale,
+    y: rawBox.y / sourceScale,
+    width: rawBox.width / sourceScale,
+    height: rawBox.height / sourceScale,
+  };
+
+  const box = mirroredWidth > 0
+    ? {
+        x: mirroredWidth - (scaledBox.x + scaledBox.width),
+        y: scaledBox.y,
+        width: scaledBox.width,
+        height: scaledBox.height,
+      }
+    : scaledBox;
+
+  return {
+    box,
+    expressions: det.expressions || {},
+    score: Number(det?.detection?.score ?? 0),
+  };
+}
+
+function getBoxCenter(box) {
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
+function getBoxIou(boxA, boxB) {
+  const left = Math.max(boxA.x, boxB.x);
+  const top = Math.max(boxA.y, boxB.y);
+  const right = Math.min(boxA.x + boxA.width, boxB.x + boxB.width);
+  const bottom = Math.min(boxA.y + boxA.height, boxB.y + boxB.height);
+  const intersectionWidth = Math.max(0, right - left);
+  const intersectionHeight = Math.max(0, bottom - top);
+  const intersectionArea = intersectionWidth * intersectionHeight;
+  if (intersectionArea <= 0) {
+    return 0;
+  }
+
+  const areaA = Math.max(1, boxA.width * boxA.height);
+  const areaB = Math.max(1, boxB.width * boxB.height);
+  return intersectionArea / (areaA + areaB - intersectionArea);
+}
+
+function areBoxesLikelySameFace(boxA, boxB) {
+  if (getBoxIou(boxA, boxB) >= 0.32) {
+    return true;
+  }
+
+  const centerA = getBoxCenter(boxA);
+  const centerB = getBoxCenter(boxB);
+  const distance = Math.hypot(centerA.x - centerB.x, centerA.y - centerB.y);
+  const minDim = Math.max(8, Math.min(boxA.width, boxA.height, boxB.width, boxB.height));
+  return distance <= minDim * 0.45;
+}
+
+function dedupeDetectionCandidates(candidates) {
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const kept = [];
+
+  sorted.forEach((candidate) => {
+    if (!candidate?.box) {
+      return;
+    }
+
+    if (candidate.box.width < MIN_FACE_BOX_SIZE || candidate.box.height < MIN_FACE_BOX_SIZE) {
+      return;
+    }
+
+    if (kept.some((existing) => areBoxesLikelySameFace(existing.box, candidate.box))) {
+      return;
+    }
+
+    kept.push(candidate);
+  });
+
+  return kept;
+}
+
+function shouldRunEnhancedDetection(image, baselineCount) {
+  const longEdge = Math.max(image.width, image.height);
+  const shortEdge = Math.max(1, Math.min(image.width, image.height));
+  const aspectRatio = longEdge / shortEdge;
+  const megapixels = (image.width * image.height) / 1000000;
+
+  if (baselineCount <= 1) {
+    return true;
+  }
+
+  if (longEdge >= 1500 && baselineCount <= 4) {
+    return true;
+  }
+
+  if (megapixels < 1.8) {
+    return false;
+  }
+
+  const expected = Math.max(6, Math.round((longEdge / 260) * Math.min(1.6, aspectRatio)));
+  return baselineCount < expected;
+}
+
+function buildUpscaledSource(image) {
+  const longEdge = Math.max(image.width, image.height);
+  const targetLongEdge = Math.min(2600, Math.max(longEdge, 1800));
+  const scale = targetLongEdge / longEdge;
+  if (scale <= 1.08) {
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return { canvas, scale };
+}
+
+function buildMirroredSource(image) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+async function runTinyDetectionPasses(source, sourceScale = 1, mirroredWidth = 0) {
+  let candidates = [];
+
+  for (const pass of TINY_DETECTION_PASSES) {
+    const options = new faceapi.TinyFaceDetectorOptions({
+      inputSize: pass.inputSize,
+      scoreThreshold: pass.scoreThreshold,
+    });
+
+    try {
+      const detections = await faceapi.detectAllFaces(source, options).withFaceExpressions();
+      detections.forEach((det) => {
+        const normalized = normalizeDetectionEntry(det, sourceScale, mirroredWidth);
+        if (normalized) {
+          candidates.push(normalized);
+        }
+      });
+    } catch (error) {
+      console.warn("Tiny detection pass failed", pass, error);
+    }
+  }
+
+  return candidates;
+}
+
+async function runSsdDetectionPasses(source, sourceScale = 1, mirroredWidth = 0) {
+  if (!state.ssdModelReady) {
+    return [];
+  }
+
+  let candidates = [];
+
+  for (const pass of SSD_DETECTION_PASSES) {
+    const options = new faceapi.SsdMobilenetv1Options({
+      minConfidence: pass.minConfidence,
+      maxResults: pass.maxResults,
+    });
+
+    try {
+      const detections = await faceapi.detectAllFaces(source, options).withFaceExpressions();
+      detections.forEach((det) => {
+        const normalized = normalizeDetectionEntry(det, sourceScale, mirroredWidth);
+        if (normalized) {
+          candidates.push(normalized);
+        }
+      });
+    } catch (error) {
+      console.warn("SSD detection pass failed", pass, error);
+    }
+  }
+
+  return candidates;
 }
 
 function getSelectedFace() {
@@ -394,20 +602,36 @@ async function detectFaces() {
 
   setStatus("Detecting faces...");
   try {
-    const options = new faceapi.TinyFaceDetectorOptions({
-      inputSize: 416,
-      scoreThreshold: 0.35,
-    });
+    let candidates = await runTinyDetectionPasses(state.image, 1, 0);
 
-    const detections = await faceapi
-      .detectAllFaces(state.image, options)
-      .withFaceExpressions();
+    const baseline = dedupeDetectionCandidates(candidates);
+    if (shouldRunEnhancedDetection(state.image, baseline.length)) {
+      const upscaled = buildUpscaledSource(state.image);
+      if (upscaled) {
+        const tinyUpscaled = await runTinyDetectionPasses(upscaled.canvas, upscaled.scale, 0);
+        candidates = candidates.concat(tinyUpscaled);
 
-    state.faces = detections.map((det) => {
+        const ssdUpscaled = await runSsdDetectionPasses(upscaled.canvas, upscaled.scale, 0);
+        candidates = candidates.concat(ssdUpscaled);
+      }
+
+      const mirrored = buildMirroredSource(state.image);
+      if (mirrored) {
+        const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
+        candidates = candidates.concat(tinyMirrored);
+      }
+
+      const ssdBase = await runSsdDetectionPasses(state.image, 1, 0);
+      candidates = candidates.concat(ssdBase);
+    }
+
+    const merged = dedupeDetectionCandidates(candidates);
+
+    state.faces = merged.map((det) => {
       const expression = pickExpression(det.expressions);
       const emoji = expressionToEmoji[expression] || state.defaultEmoji;
       return createFace({
-        box: det.detection.box,
+        box: det.box,
         expression,
         emoji,
         opacity: state.defaultOpacity,
@@ -878,8 +1102,18 @@ async function loadModels() {
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]);
+
     state.modelsReady = true;
     setStatus("Models ready. Quick upload in Live Preview.");
+
+    faceapi.nets.ssdMobilenetv1
+      .loadFromUri(MODEL_URL)
+      .then(() => {
+        state.ssdModelReady = true;
+      })
+      .catch((error) => {
+        console.warn("Optional SSD model failed to load", error);
+      });
   } catch (error) {
     console.error(error);
     setStatus("Failed to load AI models.", true);
