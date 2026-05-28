@@ -277,19 +277,19 @@ function drawEmojiSticker(ctx, face) {
 }
 
 function drawWatermark(ctx) {
-  const text = "Made with FaceToEmoji";
+  const text = "FaceToEmoji";
   const minSide = Math.min(refs.previewCanvas.width, refs.previewCanvas.height);
-  const fontSize = Math.max(28, Math.min(128, minSide * 0.07));
+  const fontSize = Math.max(14, Math.min(64, minSide * 0.035));
   const margin = Math.max(10, Math.min(28, minSide * 0.018));
 
   ctx.save();
   ctx.font = `700 ${fontSize}px Inter, "Segoe UI", sans-serif`;
-  ctx.textAlign = "right";
+  ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
   ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
   ctx.shadowColor = "rgba(0, 0, 0, 0.38)";
   ctx.shadowBlur = Math.max(2, fontSize * 0.12);
-  ctx.fillText(text, refs.previewCanvas.width - margin, refs.previewCanvas.height - margin);
+  ctx.fillText(text, margin, refs.previewCanvas.height - margin);
   ctx.restore();
 }
 
