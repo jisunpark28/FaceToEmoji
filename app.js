@@ -13,7 +13,7 @@ const TILE_SCAN_MIN_LONG_EDGE = 1400;
 const TILE_SCAN_CONFIG = {
   initialTileSize: 1200,
   overlapRatio: 0.28,
-  maxTiles: 12,
+  maxTiles: 8,
 };
 
 const expressionToEmoji = {
@@ -288,7 +288,23 @@ function shouldRunTileScan(image, baselineDetectionCount) {
     return false;
   }
 
-  const expectedFaces = Math.max(10, Math.round(longEdge / 180));
+  const shortEdge = Math.max(1, Math.min(image.width, image.height));
+  const aspectRatio = longEdge / shortEdge;
+  const megapixels = (image.width * image.height) / 1000000;
+
+  if (baselineDetectionCount === 0) {
+    return megapixels >= 1.4;
+  }
+
+  if (baselineDetectionCount === 1) {
+    return megapixels >= 2.2 && aspectRatio >= 1.35;
+  }
+
+  if (baselineDetectionCount === 2) {
+    return megapixels >= 2.8 && aspectRatio >= 1.45;
+  }
+
+  const expectedFaces = Math.max(12, Math.round((longEdge / 220) * Math.min(1.6, aspectRatio)));
   return baselineDetectionCount < expectedFaces;
 }
 
@@ -307,54 +323,58 @@ async function runTiledDetectionPasses(image) {
   const candidates = [];
 
   for (const region of regions) {
-    tileCanvas.width = region.width;
-    tileCanvas.height = region.height;
-    tileCtx.clearRect(0, 0, region.width, region.height);
-    tileCtx.drawImage(
-      image,
-      region.x,
-      region.y,
-      region.width,
-      region.height,
-      0,
-      0,
-      region.width,
-      region.height,
-    );
+    try {
+      tileCanvas.width = region.width;
+      tileCanvas.height = region.height;
+      tileCtx.clearRect(0, 0, region.width, region.height);
+      tileCtx.drawImage(
+        image,
+        region.x,
+        region.y,
+        region.width,
+        region.height,
+        0,
+        0,
+        region.width,
+        region.height,
+      );
 
-    const tileDetections = await runDetectionPasses(tileCanvas, 1, TILE_DETECTION_PASSES);
-    const edgePadding = Math.max(6, Math.min(region.width, region.height) * 0.03);
+      const tileDetections = await runDetectionPasses(tileCanvas, 1, TILE_DETECTION_PASSES);
+      const edgePadding = Math.max(6, Math.min(region.width, region.height) * 0.03);
 
-    tileDetections.forEach((det) => {
-      const center = getBoxCenter(det.box);
-      const nearLeftEdge = center.x < edgePadding;
-      const nearRightEdge = center.x > region.width - edgePadding;
-      const nearTopEdge = center.y < edgePadding;
-      const nearBottomEdge = center.y > region.height - edgePadding;
+      tileDetections.forEach((det) => {
+        const center = getBoxCenter(det.box);
+        const nearLeftEdge = center.x < edgePadding;
+        const nearRightEdge = center.x > region.width - edgePadding;
+        const nearTopEdge = center.y < edgePadding;
+        const nearBottomEdge = center.y > region.height - edgePadding;
 
-      if (nearLeftEdge && region.x > 0) {
-        return;
-      }
-      if (nearRightEdge && region.x + region.width < image.width) {
-        return;
-      }
-      if (nearTopEdge && region.y > 0) {
-        return;
-      }
-      if (nearBottomEdge && region.y + region.height < image.height) {
-        return;
-      }
+        if (nearLeftEdge && region.x > 0) {
+          return;
+        }
+        if (nearRightEdge && region.x + region.width < image.width) {
+          return;
+        }
+        if (nearTopEdge && region.y > 0) {
+          return;
+        }
+        if (nearBottomEdge && region.y + region.height < image.height) {
+          return;
+        }
 
-      candidates.push({
-        ...det,
-        box: {
-          x: det.box.x + region.x,
-          y: det.box.y + region.y,
-          width: det.box.width,
-          height: det.box.height,
-        },
+        candidates.push({
+          ...det,
+          box: {
+            x: det.box.x + region.x,
+            y: det.box.y + region.y,
+            width: det.box.width,
+            height: det.box.height,
+          },
+        });
       });
-    });
+    } catch (error) {
+      console.warn("Tile scan region failed", region, error);
+    }
   }
 
   return candidates;
@@ -651,8 +671,12 @@ async function detectFaces() {
     const baselineDetections = dedupeDetections(detectionCandidates);
     if (shouldRunTileScan(state.image, baselineDetections.length)) {
       setStatus("Detecting small faces with tile scan...");
-      const tileDetections = await runTiledDetectionPasses(state.image);
-      detectionCandidates = detectionCandidates.concat(tileDetections);
+      try {
+        const tileDetections = await runTiledDetectionPasses(state.image);
+        detectionCandidates = detectionCandidates.concat(tileDetections);
+      } catch (error) {
+        console.warn("Tile scan fallback: using baseline detections only", error);
+      }
     }
 
     const mergedDetections = dedupeDetections(detectionCandidates);
@@ -753,20 +777,30 @@ async function onFileSelected(file) {
     return;
   }
 
+  let image;
   try {
     setStatus("Loading image...");
-    const image = await loadImageFromFile(file);
-    state.image = image;
-    state.fileName = file.name.replace(/\.[^.]+$/, "") || "facetoemoji";
-    state.faces = [];
-    state.selectedFaceId = null;
-    state.draftRect = null;
-    resizeCanvases(image.width, image.height);
-    renderAll();
+    image = await loadImageFromFile(file);
+  } catch (error) {
+    console.error(error);
+    setStatus("Image upload failed. Please try another image format.", true);
+    refs.imageInput.value = "";
+    return;
+  }
+
+  state.image = image;
+  state.fileName = file.name.replace(/\.[^.]+$/, "") || "facetoemoji";
+  state.faces = [];
+  state.selectedFaceId = null;
+  state.draftRect = null;
+  resizeCanvases(image.width, image.height);
+  renderAll();
+
+  try {
     await detectFaces();
   } catch (error) {
     console.error(error);
-    setStatus("Image upload failed.", true);
+    setStatus("Image loaded. Auto detection failed, but you can retry Auto or use Edit drag.", true);
   } finally {
     refs.imageInput.value = "";
   }
