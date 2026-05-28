@@ -37,6 +37,10 @@ body {
 }
 
 .title-reset-btn {
+  display: inline-block;
+  width: auto;
+  min-height: 0;
+  text-align: left;
   border: 0;
   padding: 0;
   margin: 0;
