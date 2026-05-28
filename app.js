@@ -283,12 +283,12 @@ function drawWatermark(ctx) {
 
   ctx.save();
   ctx.font = `600 ${fontSize}px Inter, "Segoe UI", sans-serif`;
-  ctx.textAlign = "left";
+  ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
   ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
   ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
   ctx.shadowBlur = 2;
-  ctx.fillText(text, margin, refs.previewCanvas.height - margin);
+  ctx.fillText(text, refs.previewCanvas.width - margin, refs.previewCanvas.height - margin);
   ctx.restore();
 }
 
