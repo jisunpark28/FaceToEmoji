@@ -194,6 +194,22 @@ function drawEmojiSticker(ctx, face) {
   ctx.restore();
 }
 
+function drawWatermark(ctx) {
+  const text = "Made with FaceToEmoji";
+  const fontSize = Math.max(11, Math.min(18, refs.previewCanvas.width * 0.018));
+  const margin = Math.max(10, fontSize * 0.7);
+
+  ctx.save();
+  ctx.font = `600 ${fontSize}px Inter, "Segoe UI", sans-serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+  ctx.shadowBlur = 2;
+  ctx.fillText(text, margin, refs.previewCanvas.height - margin);
+  ctx.restore();
+}
+
 function drawPreview() {
   previewCtx.clearRect(0, 0, refs.previewCanvas.width, refs.previewCanvas.height);
   if (!state.image) {
@@ -202,6 +218,7 @@ function drawPreview() {
 
   previewCtx.drawImage(state.image, 0, 0);
   state.faces.forEach((face) => drawEmojiSticker(previewCtx, face));
+  drawWatermark(previewCtx);
 }
 
 function drawFaceOutline(face, index) {
