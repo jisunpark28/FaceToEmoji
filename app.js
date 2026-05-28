@@ -105,14 +105,16 @@ function syncControlsForSelection() {
   const selected = getSelectedFace();
 
   if (!selected) {
-    refs.selectedFaceMeta.textContent = "Click a face on preview to edit it.";
+    refs.selectedFaceMeta.textContent = "Click an emoji on preview to adjust only that one.";
     refs.emojiSelect.value = state.defaultEmoji;
+    refs.opacityRange.disabled = true;
     syncOpacityControl(state.defaultOpacity);
     return;
   }
 
   refs.selectedFaceMeta.textContent = `Selected face / Emoji ${selected.emoji} / Opacity ${opacityToPercent(selected.opacity)}%`;
   refs.emojiSelect.value = selected.emoji;
+  refs.opacityRange.disabled = false;
   syncOpacityControl(selected.opacity);
 }
 
@@ -538,20 +540,16 @@ function setupCanvasInteractions() {
       }
 
       event.preventDefault();
-      const step = event.shiftKey ? 0.01 : 0.02;
-      const delta = event.deltaY < 0 ? step : -step;
       const selected = getSelectedFace();
-
-      if (selected) {
-        selected.opacity = clampOpacity(selected.opacity + delta);
-        state.defaultOpacity = selected.opacity;
-        renderAll();
+      if (!selected) {
+        setStatus("Click an emoji first, then use wheel to adjust its opacity.");
         return;
       }
 
-      state.defaultOpacity = clampOpacity(state.defaultOpacity + delta);
-      syncOpacityControl(state.defaultOpacity);
-      setStatus(`Default opacity: ${opacityToPercent(state.defaultOpacity)}%`);
+      const step = event.shiftKey ? 0.01 : 0.02;
+      const delta = event.deltaY < 0 ? step : -step;
+      selected.opacity = clampOpacity(selected.opacity + delta);
+      renderAll();
     },
     { passive: false },
   );
@@ -591,15 +589,16 @@ function setupControlEvents() {
   });
 
   refs.opacityRange.addEventListener("input", (event) => {
-    const opacity = clampOpacity(Number(event.target.value) / 100);
-    state.defaultOpacity = opacity;
-    refs.opacityValue.textContent = `${opacityToPercent(opacity)}%`;
-
     const selected = getSelectedFace();
-    if (selected) {
-      selected.opacity = opacity;
-      renderAll();
+    if (!selected) {
+      syncOpacityControl(state.defaultOpacity);
+      setStatus("Select one emoji on preview to adjust opacity.");
+      return;
     }
+
+    const opacity = clampOpacity(Number(event.target.value) / 100);
+    selected.opacity = opacity;
+    renderAll();
   });
 
   refs.downloadBtn.addEventListener("click", () => {
@@ -634,8 +633,7 @@ async function init() {
   refs.canvasStage.style.width = "100%";
   refs.overlayCanvas.style.cursor = "pointer";
   refs.emojiSelect.value = state.defaultEmoji;
-  syncOpacityControl(state.defaultOpacity);
-  syncQuickUploadHint();
+  renderAll();
 
   setupQuickUploadArea();
   setupControlEvents();
