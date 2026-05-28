@@ -166,7 +166,7 @@ function syncControlsForSelection() {
   const canEditSelected = state.editMode && Boolean(selected);
 
   if (!state.editMode) {
-    refs.selectedFaceMeta.textContent = "Turn on Edit mode to change selected emoji options.";
+    refs.selectedFaceMeta.textContent = "Click an emoji (blue outline) to edit and move it.";
     refs.emojiSelect.value = state.defaultEmoji;
     refs.emojiSelect.disabled = true;
     refs.opacityRange.disabled = true;
@@ -601,8 +601,11 @@ function setupCanvasInteractions() {
     }
 
     state.selectedFaceId = targetFace.id;
+    if (!state.editMode) {
+      setEditMode(true, false);
+    }
     renderAll();
-    setStatus(state.editMode ? "Emoji selected. Edit options are now enabled." : "Emoji selected. Turn on Edit mode to modify it.");
+    setStatus("Emoji selected. You can now edit and move it.");
   });
 
   refs.overlayCanvas.addEventListener("pointerdown", (event) => {
@@ -612,13 +615,17 @@ function setupCanvasInteractions() {
 
     const point = toCanvasPoint(event);
 
-    if (state.editMode && !state.manualMode) {
+    if (!state.manualMode) {
       const targetFace = findFaceAtPoint(point.x, point.y);
       if (!targetFace) {
         return;
       }
 
       state.selectedFaceId = targetFace.id;
+      if (!state.editMode) {
+        setEditMode(true, false);
+      }
+
       const handleRect = getResizeHandleRect(targetFace);
       state.editDragging = true;
       state.editDragMode = isPointInRect(point, handleRect) ? "resize" : "move";
@@ -630,10 +637,6 @@ function setupCanvasInteractions() {
       refs.overlayCanvas.setPointerCapture(event.pointerId);
       renderAll();
       setStatus(state.editDragMode === "resize" ? "Drag to resize selected emoji." : "Drag to move selected emoji.");
-      return;
-    }
-
-    if (!state.manualMode) {
       return;
     }
 
@@ -750,15 +753,14 @@ function setupCanvasInteractions() {
       }
 
       event.preventDefault();
-      if (!state.editMode) {
-        setStatus("Turn on Edit mode first.");
+      const selected = getSelectedFace();
+      if (!selected) {
+        setStatus("Click an emoji first, then use wheel to adjust opacity.");
         return;
       }
 
-      const selected = getSelectedFace();
-      if (!selected) {
-        setStatus("Click an emoji first, then use wheel to adjust its opacity.");
-        return;
+      if (!state.editMode) {
+        setEditMode(true, false);
       }
 
       const step = 0.02;
@@ -794,10 +796,14 @@ function setupControlEvents() {
 
   refs.emojiSelect.addEventListener("change", (event) => {
     const selected = getSelectedFace();
-    if (!state.editMode || !selected) {
+    if (!selected) {
       syncControlsForSelection();
-      setStatus("Turn on Edit mode and select an emoji to change it.");
+      setStatus("Click an emoji first to change it.");
       return;
+    }
+
+    if (!state.editMode) {
+      setEditMode(true, false);
     }
 
     const emoji = event.target.value;
@@ -809,10 +815,14 @@ function setupControlEvents() {
 
   refs.opacityRange.addEventListener("input", (event) => {
     const selected = getSelectedFace();
-    if (!state.editMode || !selected) {
+    if (!selected) {
       syncControlsForSelection();
-      setStatus("Turn on Edit mode and select one emoji to adjust opacity.");
+      setStatus("Click one emoji first to adjust opacity.");
       return;
+    }
+
+    if (!state.editMode) {
+      setEditMode(true, false);
     }
 
     const opacity = clampOpacity(Number(event.target.value) / 100);
@@ -822,10 +832,14 @@ function setupControlEvents() {
 
   refs.sizeRange.addEventListener("input", (event) => {
     const selected = getSelectedFace();
-    if (!state.editMode || !selected) {
+    if (!selected) {
       syncControlsForSelection();
-      setStatus("Turn on Edit mode and select one emoji to adjust size.");
+      setStatus("Click one emoji first to adjust size.");
       return;
+    }
+
+    if (!state.editMode) {
+      setEditMode(true, false);
     }
 
     const size = clampSize(Number(event.target.value) / 100);
@@ -835,9 +849,13 @@ function setupControlEvents() {
 
   refs.deleteSelectedBtn.addEventListener("click", () => {
     const selected = getSelectedFace();
-    if (!state.editMode || !selected) {
-      setStatus("Turn on Edit mode and select one emoji to delete.");
+    if (!selected) {
+      setStatus("Click one emoji first to delete.");
       return;
+    }
+
+    if (!state.editMode) {
+      setEditMode(true, false);
     }
 
     state.faces = state.faces.filter((face) => face.id !== selected.id);
