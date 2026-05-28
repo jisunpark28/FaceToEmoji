@@ -28,6 +28,7 @@ const state = {
   fileName: "facetoemoji",
   faces: [],
   selectedFaceId: null,
+  selectedFaceIds: [],
   editMode: false,
   drawing: false,
   drawStart: null,
@@ -35,9 +36,12 @@ const state = {
   editDragging: false,
   editDragMode: null,
   editDragFaceId: null,
+  editDragFaceIds: [],
   editDragStart: null,
   editDragStartBox: null,
+  editDragStartBoxes: {},
   editDragStartSize: 1,
+  editDragStartSizes: {},
   defaultEmoji: "🙂",
   defaultOpacity: 1,
   defaultSize: 1,
@@ -322,8 +326,44 @@ async function runSsdDetectionPasses(source, sourceScale = 1, mirroredWidth = 0)
   return candidates;
 }
 
+function setSelectedFaces(faceIds = []) {
+  const faceIdSet = new Set(faceIds);
+  const next = state.faces
+    .map((face) => face.id)
+    .filter((faceId) => faceIdSet.has(faceId));
+
+  state.selectedFaceIds = next;
+  state.selectedFaceId = next[0] ?? null;
+}
+
+function isFaceSelected(faceId) {
+  return state.selectedFaceIds.includes(faceId);
+}
+
+function getSelectedFaces() {
+  if (state.selectedFaceIds.length === 0) {
+    return [];
+  }
+
+  const faceIdSet = new Set(state.selectedFaceIds);
+  return state.faces.filter((face) => faceIdSet.has(face.id));
+}
+
 function getSelectedFace() {
-  return state.faces.find((face) => face.id === state.selectedFaceId) || null;
+  return getSelectedFaces()[0] || null;
+}
+
+function toggleSelectedFace(faceId) {
+  if (!faceId) {
+    return;
+  }
+
+  if (isFaceSelected(faceId)) {
+    setSelectedFaces(state.selectedFaceIds.filter((id) => id !== faceId));
+    return;
+  }
+
+  setSelectedFaces([...state.selectedFaceIds, faceId]);
 }
 
 function updateOverlayCursor() {
@@ -367,7 +407,9 @@ function setEditMode(active, announce = true) {
 }
 
 function syncControlsForSelection() {
-  const selected = getSelectedFace();
+  const selectedFaces = getSelectedFaces();
+  const selectedCount = selectedFaces.length;
+  const selected = selectedFaces[0] || null;
 
   if (!state.editMode) {
     refs.selectedFaceMeta.textContent = "Turn on Edit to add stickers, then click one to move or resize.";
@@ -382,10 +424,10 @@ function syncControlsForSelection() {
   }
 
   refs.emojiSelect.disabled = false;
-  refs.emojiSelect.value = selected ? selected.emoji : state.defaultEmoji;
 
-  if (!selected) {
-    refs.selectedFaceMeta.textContent = "Edit mode on. Drag empty space to add sticker, or click one to move/resize.";
+  if (selectedCount === 0) {
+    refs.emojiSelect.value = state.defaultEmoji;
+    refs.selectedFaceMeta.textContent = "Edit mode on. Drag to add, Shift+click for multi-select, Ctrl+A to select all.";
     refs.opacityRange.disabled = true;
     refs.sizeRange.disabled = true;
     refs.deleteSelectedBtn.disabled = true;
@@ -394,12 +436,24 @@ function syncControlsForSelection() {
     return;
   }
 
-  refs.selectedFaceMeta.textContent = `Selected face / Style ${getStickerDisplayLabel(selected.emoji)} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
+  const hasSameEmoji = selectedFaces.every((face) => face.emoji === selectedFaces[0].emoji);
+  refs.emojiSelect.value = hasSameEmoji ? selectedFaces[0].emoji : state.defaultEmoji;
   refs.opacityRange.disabled = false;
   refs.sizeRange.disabled = false;
   refs.deleteSelectedBtn.disabled = false;
-  syncOpacityControl(selected.opacity);
-  syncSizeControl(selected.size);
+
+  if (selectedCount === 1 && selected) {
+    refs.selectedFaceMeta.textContent = `Selected face / Style ${getStickerDisplayLabel(selected.emoji)} / Opacity ${opacityToPercent(selected.opacity)}% / Size ${sizeToPercent(selected.size)}%`;
+    syncOpacityControl(selected.opacity);
+    syncSizeControl(selected.size);
+    return;
+  }
+
+  const averageOpacity = selectedFaces.reduce((sum, face) => sum + clampOpacity(face.opacity), 0) / selectedCount;
+  const averageSize = selectedFaces.reduce((sum, face) => sum + clampSize(face.size), 0) / selectedCount;
+  refs.selectedFaceMeta.textContent = `Selected ${selectedCount} stickers / Avg Opacity ${opacityToPercent(averageOpacity)}% / Avg Size ${sizeToPercent(averageSize)}%`;
+  syncOpacityControl(averageOpacity);
+  syncSizeControl(averageSize);
 }
 
 function syncCanvasStageSize(imageWidth) {
@@ -421,7 +475,7 @@ function clearLoadedImage() {
   state.image = null;
   state.fileName = "facetoemoji";
   state.faces = [];
-  state.selectedFaceId = null;
+  setSelectedFaces([]);
   state.drawing = false;
   state.drawStart = null;
   state.draftRect = null;
@@ -527,7 +581,7 @@ function drawPreview() {
 
 function drawFaceOutline(face, index) {
   const { x, y, width, height } = face.box;
-  const selected = face.id === state.selectedFaceId;
+  const selected = isFaceSelected(face.id);
 
   overlayCtx.save();
   overlayCtx.strokeStyle = selected ? "#2f58f0" : "#20a960";
@@ -639,7 +693,7 @@ async function detectFaces() {
       });
     });
 
-    state.selectedFaceId = state.faces[0]?.id ?? null;
+    setSelectedFaces(state.faces[0] ? [state.faces[0].id] : []);
     renderAll();
 
     if (state.faces.length === 0) {
@@ -729,7 +783,7 @@ async function onFileSelected(file) {
     state.image = image;
     state.fileName = file.name.replace(/\.[^.]+$/, "") || "facetoemoji";
     state.faces = [];
-    state.selectedFaceId = null;
+    setSelectedFaces([]);
     state.draftRect = null;
     resizeCanvases(image.width, image.height);
     renderAll();
@@ -824,7 +878,7 @@ function setupCanvasInteractions() {
     const targetFace = findFaceAtPoint(point.x, point.y);
 
     if (!state.editMode) {
-      state.selectedFaceId = targetFace?.id ?? null;
+      setSelectedFaces(targetFace ? [targetFace.id] : []);
       renderAll();
       if (targetFace) {
         setStatus("Sticker selected. Turn on Edit to move, resize, or change style.");
@@ -835,22 +889,58 @@ function setupCanvasInteractions() {
     }
 
     if (targetFace) {
-      state.selectedFaceId = targetFace.id;
+      if (event.shiftKey) {
+        toggleSelectedFace(targetFace.id);
+        renderAll();
+        const selectedCount = getSelectedFaces().length;
+        setStatus(selectedCount > 0 ? `${selectedCount} sticker(s) selected.` : "Selection cleared.");
+        return;
+      }
+
+      const activeSelection = isFaceSelected(targetFace.id) && state.selectedFaceIds.length > 0
+        ? [...state.selectedFaceIds]
+        : [targetFace.id];
+      setSelectedFaces(activeSelection);
+
       const handleRect = getResizeHandleRect(targetFace);
       state.editDragging = true;
       state.editDragMode = isPointInRect(point, handleRect) ? "resize" : "move";
       state.editDragFaceId = targetFace.id;
+      state.editDragFaceIds = [...state.selectedFaceIds];
       state.editDragStart = point;
       state.editDragStartBox = { ...targetFace.box };
       state.editDragStartSize = targetFace.size ?? 1;
+      state.editDragStartBoxes = {};
+      state.editDragStartSizes = {};
+
+      state.editDragFaceIds.forEach((faceId) => {
+        const face = getFaceById(faceId);
+        if (!face) {
+          return;
+        }
+        state.editDragStartBoxes[faceId] = { ...face.box };
+        state.editDragStartSizes[faceId] = face.size ?? 1;
+      });
 
       refs.overlayCanvas.setPointerCapture(event.pointerId);
       renderAll();
-      setStatus(state.editDragMode === "resize" ? "Drag corner to resize selected sticker." : "Drag selected sticker to move.");
+      if (state.editDragMode === "resize") {
+        setStatus(
+          state.editDragFaceIds.length > 1
+            ? `Drag to resize ${state.editDragFaceIds.length} selected stickers.`
+            : "Drag corner to resize selected sticker.",
+        );
+      } else {
+        setStatus(
+          state.editDragFaceIds.length > 1
+            ? `Drag to move ${state.editDragFaceIds.length} selected stickers.`
+            : "Drag selected sticker to move.",
+        );
+      }
       return;
     }
 
-    state.selectedFaceId = null;
+    setSelectedFaces([]);
     refs.overlayCanvas.setPointerCapture(event.pointerId);
     state.drawing = true;
     state.drawStart = point;
@@ -863,25 +953,37 @@ function setupCanvasInteractions() {
     const point = toCanvasPoint(event);
 
     if (state.editDragging && state.editDragStart && state.editDragFaceId) {
-      const targetFace = getFaceById(state.editDragFaceId);
-      if (!targetFace) {
-        return;
-      }
-
       if (state.editDragMode === "move") {
         const dx = point.x - state.editDragStart.x;
         const dy = point.y - state.editDragStart.y;
-        const maxX = Math.max(0, refs.previewCanvas.width - state.editDragStartBox.width);
-        const maxY = Math.max(0, refs.previewCanvas.height - state.editDragStartBox.height);
-        targetFace.box.x = Math.min(maxX, Math.max(0, state.editDragStartBox.x + dx));
-        targetFace.box.y = Math.min(maxY, Math.max(0, state.editDragStartBox.y + dy));
+
+        state.editDragFaceIds.forEach((faceId) => {
+          const targetFace = getFaceById(faceId);
+          const startBox = state.editDragStartBoxes[faceId];
+          if (!targetFace || !startBox) {
+            return;
+          }
+
+          const maxX = Math.max(0, refs.previewCanvas.width - startBox.width);
+          const maxY = Math.max(0, refs.previewCanvas.height - startBox.height);
+          targetFace.box.x = Math.min(maxX, Math.max(0, startBox.x + dx));
+          targetFace.box.y = Math.min(maxY, Math.max(0, startBox.y + dy));
+        });
       } else if (state.editDragMode === "resize") {
         const centerX = state.editDragStartBox.x + state.editDragStartBox.width / 2;
         const centerY = state.editDragStartBox.y + state.editDragStartBox.height / 2;
         const startDistance = Math.hypot(state.editDragStart.x - centerX, state.editDragStart.y - centerY) || 1;
         const currentDistance = Math.hypot(point.x - centerX, point.y - centerY);
         const scale = currentDistance / startDistance;
-        targetFace.size = clampSize(state.editDragStartSize * scale);
+
+        state.editDragFaceIds.forEach((faceId) => {
+          const targetFace = getFaceById(faceId);
+          if (!targetFace) {
+            return;
+          }
+          const startSize = state.editDragStartSizes[faceId] ?? 1;
+          targetFace.size = clampSize(startSize * scale);
+        });
       }
 
       renderAll();
@@ -902,14 +1004,22 @@ function setupCanvasInteractions() {
     }
 
     if (state.editDragging) {
+      const editedCount = state.editDragFaceIds.length;
       state.editDragging = false;
       state.editDragMode = null;
       state.editDragFaceId = null;
+      state.editDragFaceIds = [];
       state.editDragStart = null;
       state.editDragStartBox = null;
+      state.editDragStartBoxes = {};
       state.editDragStartSize = 1;
+      state.editDragStartSizes = {};
       renderAll();
-      setStatus("Selected sticker updated by mouse drag.");
+      setStatus(
+        editedCount > 1
+          ? `Updated ${editedCount} selected stickers by drag.`
+          : "Selected sticker updated by mouse drag.",
+      );
       return;
     }
 
@@ -928,7 +1038,7 @@ function setupCanvasInteractions() {
         expression: "manual",
       });
       state.faces.push(face);
-      state.selectedFaceId = face.id;
+      setSelectedFaces([face.id]);
       setStatus("Sticker added by drag.");
     }
 
@@ -942,9 +1052,12 @@ function setupCanvasInteractions() {
       state.editDragging = false;
       state.editDragMode = null;
       state.editDragFaceId = null;
+      state.editDragFaceIds = [];
       state.editDragStart = null;
       state.editDragStartBox = null;
+      state.editDragStartBoxes = {};
       state.editDragStartSize = 1;
+      state.editDragStartSizes = {};
     }
 
     if (state.drawing) {
@@ -970,19 +1083,47 @@ function setupCanvasInteractions() {
         return;
       }
 
-      const selected = getSelectedFace();
-      if (!selected) {
+      const selectedFaces = getSelectedFaces();
+      if (selectedFaces.length === 0) {
         setStatus("Click a sticker first, then use wheel to adjust opacity.");
         return;
       }
 
       const step = 0.02;
       const delta = event.deltaY < 0 ? step : -step;
-      selected.opacity = clampOpacity(selected.opacity + delta);
+      selectedFaces.forEach((face) => {
+        face.opacity = clampOpacity(face.opacity + delta);
+      });
       renderAll();
     },
     { passive: false },
   );
+
+  window.addEventListener("keydown", (event) => {
+    const isSelectAll = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a";
+    if (!isSelectAll) {
+      return;
+    }
+
+    if (!state.image || !state.editMode) {
+      return;
+    }
+
+    const tagName = event.target?.tagName;
+    if (tagName && ["INPUT", "TEXTAREA", "SELECT"].includes(tagName)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (state.faces.length === 0) {
+      setStatus("No stickers available to select.");
+      return;
+    }
+
+    setSelectedFaces(state.faces.map((face) => face.id));
+    renderAll();
+    setStatus(`Selected all ${state.faces.length} stickers.`);
+  });
 }
 
 function setupControlEvents() {
@@ -996,10 +1137,13 @@ function setupControlEvents() {
 
   refs.clearBtn.addEventListener("click", () => {
     state.faces = [];
-    state.selectedFaceId = null;
+    setSelectedFaces([]);
     state.draftRect = null;
     state.drawing = false;
     state.editDragging = false;
+    state.editDragFaceIds = [];
+    state.editDragStartBoxes = {};
+    state.editDragStartSizes = {};
     renderAll();
     setStatus("Stickers reset.");
   });
@@ -1014,16 +1158,22 @@ function setupControlEvents() {
     const emoji = event.target.value;
     state.defaultEmoji = emoji;
 
-    const selected = getSelectedFace();
-    if (!selected) {
+    const selectedFaces = getSelectedFaces();
+    if (selectedFaces.length === 0) {
       syncControlsForSelection();
       setStatus("Sticker style set. Drag on preview to add it.");
       return;
     }
 
-    selected.emoji = emoji;
+    selectedFaces.forEach((face) => {
+      face.emoji = emoji;
+    });
     renderAll();
-    setStatus("Selected sticker style updated.");
+    setStatus(
+      selectedFaces.length > 1
+        ? `Updated style for ${selectedFaces.length} selected stickers.`
+        : "Selected sticker style updated.",
+    );
   });
 
   refs.opacityRange.addEventListener("input", (event) => {
@@ -1033,15 +1183,17 @@ function setupControlEvents() {
       return;
     }
 
-    const selected = getSelectedFace();
-    if (!selected) {
+    const selectedFaces = getSelectedFaces();
+    if (selectedFaces.length === 0) {
       syncControlsForSelection();
-      setStatus("Click one sticker first to adjust opacity.");
+      setStatus("Click one or more stickers first to adjust opacity.");
       return;
     }
 
     const opacity = clampOpacity(Number(event.target.value) / 100);
-    selected.opacity = opacity;
+    selectedFaces.forEach((face) => {
+      face.opacity = opacity;
+    });
     renderAll();
   });
 
@@ -1052,15 +1204,17 @@ function setupControlEvents() {
       return;
     }
 
-    const selected = getSelectedFace();
-    if (!selected) {
+    const selectedFaces = getSelectedFaces();
+    if (selectedFaces.length === 0) {
       syncControlsForSelection();
-      setStatus("Click one sticker first to adjust size.");
+      setStatus("Click one or more stickers first to adjust size.");
       return;
     }
 
     const size = clampSize(Number(event.target.value) / 100);
-    selected.size = size;
+    selectedFaces.forEach((face) => {
+      face.size = size;
+    });
     renderAll();
   });
 
@@ -1070,16 +1224,21 @@ function setupControlEvents() {
       return;
     }
 
-    const selected = getSelectedFace();
-    if (!selected) {
-      setStatus("Click one sticker first to delete.");
+    const selectedFaces = getSelectedFaces();
+    if (selectedFaces.length === 0) {
+      setStatus("Click one or more stickers first to delete.");
       return;
     }
 
-    state.faces = state.faces.filter((face) => face.id !== selected.id);
-    state.selectedFaceId = state.faces[0]?.id ?? null;
+    const selectedIdSet = new Set(selectedFaces.map((face) => face.id));
+    state.faces = state.faces.filter((face) => !selectedIdSet.has(face.id));
+    setSelectedFaces(state.faces[0] ? [state.faces[0].id] : []);
     renderAll();
-    setStatus("Selected sticker deleted.");
+    setStatus(
+      selectedFaces.length > 1
+        ? `Deleted ${selectedFaces.length} selected stickers.`
+        : "Selected sticker deleted.",
+    );
   });
 
   refs.downloadBtn.addEventListener("click", () => {
