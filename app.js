@@ -350,6 +350,10 @@ function getSelectedFaces() {
   return state.faces.filter((face) => faceIdSet.has(face.id));
 }
 
+function getSelectedFace() {
+  return getSelectedFaces()[0] || null;
+}
+
 function toggleSelectedFace(faceId) {
   if (!faceId) {
     return;
@@ -371,6 +375,16 @@ function syncQuickUploadHint() {
   const hasImage = Boolean(state.image);
   refs.quickUploadHint.style.display = hasImage ? "none" : "grid";
   refs.previewActions.style.display = hasImage ? "flex" : "none";
+  refs.previewActions.style.pointerEvents = "auto";
+  refs.canvasContainer.style.pointerEvents = hasImage ? "none" : "auto";
+  refs.canvasStage.style.pointerEvents = hasImage ? "auto" : "none";
+  if (hasImage) {
+    refs.canvasContainer.removeAttribute("role");
+    refs.canvasContainer.removeAttribute("tabindex");
+  } else {
+    refs.canvasContainer.setAttribute("role", "button");
+    refs.canvasContainer.setAttribute("tabindex", "0");
+  }
 }
 
 function syncOpacityControl(opacity) {
@@ -406,7 +420,7 @@ function setEditMode(active, announce = true) {
 function syncControlsForSelection() {
   const selectedFaces = getSelectedFaces();
   const selectedCount = selectedFaces.length;
-  const selected = selectedFaces[0] || null;
+  const selected = getSelectedFace();
 
   if (!state.editMode) {
     refs.selectedFaceMeta.textContent = "Turn on Edit to add stickers, then click one to move or resize.";
@@ -424,9 +438,10 @@ function syncControlsForSelection() {
 
   if (selectedCount === 0) {
     refs.emojiSelect.value = state.defaultEmoji;
-    refs.selectedFaceMeta.textContent = "Edit mode on. Drag to add, Shift+click for multi-select, Ctrl+A to select all.";
-    refs.opacityRange.disabled = true;
-    refs.sizeRange.disabled = true;
+    refs.selectedFaceMeta.textContent =
+      "Edit mode on. Drag on the image to add, or adjust defaults below before placing.";
+    refs.opacityRange.disabled = false;
+    refs.sizeRange.disabled = false;
     refs.deleteSelectedBtn.disabled = true;
     syncOpacityControl(state.defaultOpacity);
     syncSizeControl(state.defaultSize);
@@ -454,10 +469,15 @@ function syncControlsForSelection() {
 }
 
 function syncCanvasStageSize(imageWidth) {
+  if (!state.image) {
+    refs.canvasStage.style.width = "100%";
+    return;
+  }
   const containerWidth = refs.canvasContainer.getBoundingClientRect().width;
   const availableWidth = Math.max(220, containerWidth - 20);
   const stageWidth = Math.min(imageWidth, availableWidth);
   refs.canvasStage.style.width = `${stageWidth}px`;
+  refs.canvasStage.style.maxWidth = "100%";
 }
 
 function resizeCanvases(width, height) {
@@ -880,6 +900,7 @@ function setupCanvasInteractions() {
     if (!state.image) {
       return;
     }
+    event.stopPropagation();
 
     const point = toCanvasPoint(event);
     const targetFace = findFaceAtPoint(point.x, point.y);
@@ -1190,14 +1211,15 @@ function setupControlEvents() {
       return;
     }
 
+    const opacity = clampOpacity(Number(event.target.value) / 100);
     const selectedFaces = getSelectedFaces();
     if (selectedFaces.length === 0) {
+      state.defaultOpacity = opacity;
       syncControlsForSelection();
-      setStatus("Click one or more stickers first to adjust opacity.");
+      setStatus("Default opacity set for new stickers.");
       return;
     }
 
-    const opacity = clampOpacity(Number(event.target.value) / 100);
     selectedFaces.forEach((face) => {
       face.opacity = opacity;
     });
@@ -1211,14 +1233,15 @@ function setupControlEvents() {
       return;
     }
 
+    const size = clampSize(Number(event.target.value) / 100);
     const selectedFaces = getSelectedFaces();
     if (selectedFaces.length === 0) {
+      state.defaultSize = size;
       syncControlsForSelection();
-      setStatus("Click one or more stickers first to adjust size.");
+      setStatus("Default size set for new stickers.");
       return;
     }
 
-    const size = clampSize(Number(event.target.value) / 100);
     selectedFaces.forEach((face) => {
       face.size = size;
     });
@@ -1286,7 +1309,14 @@ async function loadModels() {
   }
 }
 
+let appInitialized = false;
+
 async function init() {
+  if (appInitialized) {
+    return;
+  }
+  appInitialized = true;
+
   refs.canvasStage.style.width = "100%";
   refs.emojiSelect.value = state.defaultEmoji;
   refs.editBtn.classList.remove("active");
