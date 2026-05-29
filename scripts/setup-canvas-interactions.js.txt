@@ -1,0 +1,282 @@
+function getInteractionSurface() {
+  return refs.canvasStage;
+}
+
+function releasePointerCaptureSafe(event) {
+  const surface = getInteractionSurface();
+  if (surface.hasPointerCapture?.(event.pointerId)) {
+    surface.releasePointerCapture(event.pointerId);
+  }
+}
+
+function setupCanvasInteractions() {
+  const surface = getInteractionSurface();
+  surface.style.touchAction = "none";
+
+  surface.addEventListener("pointerdown", (event) => {
+    if (!state.image) {
+      return;
+    }
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const point = toCanvasPoint(event);
+    const targetFace = findFaceAtPoint(point.x, point.y);
+
+    if (!state.editMode) {
+      setSelectedFaces(targetFace ? [targetFace.id] : []);
+      renderAll();
+      if (targetFace) {
+        setStatus("Sticker selected. Turn on Edit to move, resize, or change style.");
+      } else {
+        setStatus("Turn on Edit to drag and add a sticker.");
+      }
+      return;
+    }
+
+    if (targetFace) {
+      if (event.shiftKey) {
+        toggleSelectedFace(targetFace.id);
+        renderAll();
+        const selectedCount = getSelectedFaces().length;
+        setStatus(selectedCount > 0 ? `${selectedCount} sticker(s) selected.` : "Selection cleared.");
+        return;
+      }
+
+      const activeSelection = isFaceSelected(targetFace.id) && state.selectedFaceIds.length > 0
+        ? [...state.selectedFaceIds]
+        : [targetFace.id];
+      setSelectedFaces(activeSelection);
+
+      const handleRect = getResizeHandleRect(targetFace);
+      state.editDragging = true;
+      state.editDragMode = isPointInRect(point, handleRect) ? "resize" : "move";
+      state.editDragFaceId = targetFace.id;
+      state.editDragFaceIds = [...state.selectedFaceIds];
+      state.editDragStart = point;
+      state.editDragStartBox = { ...targetFace.box };
+      state.editDragStartSize = targetFace.size ?? 1;
+      state.editDragStartBoxes = {};
+      state.editDragStartSizes = {};
+
+      state.editDragFaceIds.forEach((faceId) => {
+        const face = getFaceById(faceId);
+        if (!face) {
+          return;
+        }
+        state.editDragStartBoxes[faceId] = { ...face.box };
+        state.editDragStartSizes[faceId] = face.size ?? 1;
+      });
+
+      surface.setPointerCapture(event.pointerId);
+      renderAll();
+      if (state.editDragMode === "resize") {
+        setStatus(
+          state.editDragFaceIds.length > 1
+            ? `Drag to resize ${state.editDragFaceIds.length} selected stickers.`
+            : "Drag corner to resize selected sticker.",
+        );
+      } else {
+        setStatus(
+          state.editDragFaceIds.length > 1
+            ? `Drag to move ${state.editDragFaceIds.length} selected stickers.`
+            : "Drag selected sticker to move.",
+        );
+      }
+      return;
+    }
+
+    setSelectedFaces([]);
+    surface.setPointerCapture(event.pointerId);
+    state.drawing = true;
+    state.drawStart = point;
+    state.draftRect = { x: point.x, y: point.y, width: 0, height: 0 };
+    renderAll();
+    setStatus("Drag to place a new sticker.");
+  });
+
+  surface.addEventListener("pointermove", (event) => {
+    if (!state.image) {
+      return;
+    }
+
+    const point = toCanvasPoint(event);
+
+    if (state.editDragging && state.editDragStart && state.editDragFaceId) {
+      if (state.editDragMode === "move") {
+        const dx = point.x - state.editDragStart.x;
+        const dy = point.y - state.editDragStart.y;
+
+        state.editDragFaceIds.forEach((faceId) => {
+          const targetFace = getFaceById(faceId);
+          const startBox = state.editDragStartBoxes[faceId];
+          if (!targetFace || !startBox) {
+            return;
+          }
+
+          const maxX = Math.max(0, refs.previewCanvas.width - startBox.width);
+          const maxY = Math.max(0, refs.previewCanvas.height - startBox.height);
+          targetFace.box.x = Math.min(maxX, Math.max(0, startBox.x + dx));
+          targetFace.box.y = Math.min(maxY, Math.max(0, startBox.y + dy));
+        });
+      } else if (state.editDragMode === "resize") {
+        const centerX = state.editDragStartBox.x + state.editDragStartBox.width / 2;
+        const centerY = state.editDragStartBox.y + state.editDragStartBox.height / 2;
+        const startDistance = Math.hypot(state.editDragStart.x - centerX, state.editDragStart.y - centerY) || 1;
+        const currentDistance = Math.hypot(point.x - centerX, point.y - centerY);
+        const scale = currentDistance / startDistance;
+
+        state.editDragFaceIds.forEach((faceId) => {
+          const targetFace = getFaceById(faceId);
+          if (!targetFace) {
+            return;
+          }
+          const startSize = state.editDragStartSizes[faceId] ?? 1;
+          targetFace.size = clampSize(startSize * scale);
+        });
+      }
+
+      renderAll();
+      return;
+    }
+
+    if (!state.drawing || !state.drawStart) {
+      return;
+    }
+
+    state.draftRect = buildDraftRect(state.drawStart, point);
+    drawOverlay();
+  });
+
+  surface.addEventListener("pointerup", (event) => {
+    releasePointerCaptureSafe(event);
+
+    if (state.editDragging) {
+      const editedCount = state.editDragFaceIds.length;
+      state.editDragging = false;
+      state.editDragMode = null;
+      state.editDragFaceId = null;
+      state.editDragFaceIds = [];
+      state.editDragStart = null;
+      state.editDragStartBox = null;
+      state.editDragStartBoxes = {};
+      state.editDragStartSize = 1;
+      state.editDragStartSizes = {};
+      renderAll();
+      setStatus(
+        editedCount > 1
+          ? `Updated ${editedCount} selected stickers by drag.`
+          : "Selected sticker updated by mouse drag.",
+      );
+      return;
+    }
+
+    if (!state.drawing) {
+      return;
+    }
+
+    state.drawing = false;
+
+    if (state.draftRect && state.draftRect.width >= MIN_STICKER_DRAG_SIZE && state.draftRect.height >= MIN_STICKER_DRAG_SIZE) {
+      const face = createFace({
+        box: state.draftRect,
+        emoji: state.defaultEmoji,
+        opacity: state.defaultOpacity,
+        size: state.defaultSize,
+        expression: "manual",
+      });
+      state.faces.push(face);
+      setSelectedFaces([face.id]);
+      setStatus("Sticker added by drag.");
+    }
+
+    state.drawStart = null;
+    state.draftRect = null;
+    renderAll();
+  });
+
+  surface.addEventListener("pointercancel", (event) => {
+    releasePointerCaptureSafe(event);
+
+    if (state.editDragging) {
+      state.editDragging = false;
+      state.editDragMode = null;
+      state.editDragFaceId = null;
+      state.editDragFaceIds = [];
+      state.editDragStart = null;
+      state.editDragStartBox = null;
+      state.editDragStartBoxes = {};
+      state.editDragStartSize = 1;
+      state.editDragStartSizes = {};
+    }
+
+    if (state.drawing) {
+      state.drawing = false;
+      state.drawStart = null;
+      state.draftRect = null;
+    }
+
+    drawOverlay();
+  });
+
+  surface.addEventListener(
+    "wheel",
+    (event) => {
+      if (!state.image) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (!state.editMode) {
+        setStatus("Turn on Edit first to adjust opacity with wheel.");
+        return;
+      }
+
+      const selectedFaces = getSelectedFaces();
+      if (selectedFaces.length === 0) {
+        setStatus("Click a sticker first, then use wheel to adjust opacity.");
+        return;
+      }
+
+      const step = 0.02;
+      const delta = event.deltaY < 0 ? step : -step;
+      selectedFaces.forEach((face) => {
+        face.opacity = clampOpacity(face.opacity + delta);
+      });
+      renderAll();
+    },
+    { passive: false },
+  );
+
+  window.addEventListener("keydown", (event) => {
+    const isSelectAll = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a";
+    if (!isSelectAll) {
+      return;
+    }
+
+    if (!state.image || !state.editMode) {
+      return;
+    }
+
+    const tagName = event.target?.tagName;
+    if (tagName && ["INPUT", "TEXTAREA", "SELECT"].includes(tagName)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (state.faces.length === 0) {
+      setStatus("No stickers available to select.");
+      return;
+    }
+
+    setSelectedFaces(state.faces.map((face) => face.id));
+    renderAll();
+    setStatus(`Selected all ${state.faces.length} stickers.`);
+  });
+}
+

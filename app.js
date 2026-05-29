@@ -10,6 +10,7 @@ const SSD_DETECTION_PASSES = [
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
+const MIN_STICKER_DRAG_SIZE = 12;
 
 const expressionToEmoji = {
   neutral: "🙂",
@@ -368,22 +369,24 @@ function toggleSelectedFace(faceId) {
 }
 
 function updateOverlayCursor() {
-  refs.overlayCanvas.style.cursor = state.editMode ? "crosshair" : "pointer";
+  const cursor = state.editMode ? "crosshair" : "pointer";
+  refs.canvasStage.style.cursor = cursor;
+  refs.overlayCanvas.style.cursor = cursor;
 }
 
 function syncQuickUploadHint() {
   const hasImage = Boolean(state.image);
   refs.quickUploadHint.style.display = hasImage ? "none" : "grid";
   refs.previewActions.style.display = hasImage ? "flex" : "none";
-  refs.previewActions.style.pointerEvents = "auto";
-  refs.canvasContainer.style.pointerEvents = hasImage ? "none" : "auto";
-  refs.canvasStage.style.pointerEvents = hasImage ? "auto" : "none";
+  refs.canvasContainer.classList.toggle("has-image", hasImage);
   if (hasImage) {
     refs.canvasContainer.removeAttribute("role");
     refs.canvasContainer.removeAttribute("tabindex");
+    refs.canvasStage.style.width = "100%";
   } else {
     refs.canvasContainer.setAttribute("role", "button");
     refs.canvasContainer.setAttribute("tabindex", "0");
+    refs.canvasStage.style.width = "100%";
   }
 }
 
@@ -661,7 +664,7 @@ function renderAll() {
   syncControlsForSelection();
 }
 
-async function detectFaces() {
+async function detectFaces({ enableEditAfter = false } = {}) {
   if (!state.modelsReady) {
     setStatus("AI models are still loading. Please wait.", true);
     return;
@@ -714,11 +717,21 @@ async function detectFaces() {
     renderAll();
 
     if (state.faces.length === 0) {
-      setStatus("No faces detected. Turn on Edit and drag to add one manually.");
+      if (enableEditAfter) {
+        setEditMode(true);
+        setStatus("No faces detected. Edit mode is on — drag on the image to add a sticker.");
+      } else {
+        setStatus("No faces detected. Turn on Edit and drag to add one manually.");
+      }
       return;
     }
 
-    setStatus(`Auto detected ${state.faces.length} face(s).`);
+    if (enableEditAfter) {
+      setEditMode(true);
+      setStatus(`Auto detected ${state.faces.length} face(s). Edit mode is on — drag stickers to adjust.`);
+    } else {
+      setStatus(`Auto detected ${state.faces.length} face(s).`);
+    }
   } catch (error) {
     console.error(error);
     setStatus("Detection failed. Please try another photo.", true);
@@ -736,12 +749,13 @@ function findFaceAtPoint(x, y) {
 }
 
 function toCanvasPoint(pointerEvent) {
-  const rect = refs.overlayCanvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
+  const canvas = refs.overlayCanvas;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0 || canvas.width === 0 || canvas.height === 0) {
     return { x: 0, y: 0 };
   }
-  const scaleX = refs.overlayCanvas.width / rect.width;
-  const scaleY = refs.overlayCanvas.height / rect.height;
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
   return {
     x: (pointerEvent.clientX - rect.left) * scaleX,
     y: (pointerEvent.clientY - rect.top) * scaleY,
@@ -785,6 +799,48 @@ function loadImageFromFile(file) {
   });
 }
 
+
+function waitForModels() {
+  if (state.modelsReady) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const check = () => {
+      if (state.modelsReady) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 120000) {
+        resolve();
+        return;
+      }
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+async function finishImageProcessing() {
+  if (!state.image) {
+    return;
+  }
+
+  if (!state.modelsReady) {
+    setStatus("Loading AI models...");
+    await waitForModels();
+  }
+
+  if (!state.modelsReady) {
+    setEditMode(true);
+    setStatus("AI models are not ready yet. Edit mode is on — drag on the image to add stickers.", true);
+    return;
+  }
+
+  await detectFaces({ enableEditAfter: true });
+}
+
 async function onFileSelected(file) {
   if (!file) {
     return;
@@ -804,7 +860,7 @@ async function onFileSelected(file) {
     state.draftRect = null;
     resizeCanvases(image.width, image.height);
     renderAll();
-    await detectFaces();
+    await finishImageProcessing();
   } catch (error) {
     console.error(error);
     setStatus("Image upload failed.", true);
@@ -895,11 +951,30 @@ function isPointInRect(point, rect) {
   );
 }
 
+function getInteractionSurface() {
+  return refs.canvasStage;
+}
+
+function releasePointerCaptureSafe(event) {
+  const surface = getInteractionSurface();
+  if (surface.hasPointerCapture?.(event.pointerId)) {
+    surface.releasePointerCapture(event.pointerId);
+  }
+}
+
 function setupCanvasInteractions() {
-  refs.overlayCanvas.addEventListener("pointerdown", (event) => {
+  const surface = getInteractionSurface();
+  surface.style.touchAction = "none";
+
+  surface.addEventListener("pointerdown", (event) => {
     if (!state.image) {
       return;
     }
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
     event.stopPropagation();
 
     const point = toCanvasPoint(event);
@@ -950,7 +1025,7 @@ function setupCanvasInteractions() {
         state.editDragStartSizes[faceId] = face.size ?? 1;
       });
 
-      refs.overlayCanvas.setPointerCapture(event.pointerId);
+      surface.setPointerCapture(event.pointerId);
       renderAll();
       if (state.editDragMode === "resize") {
         setStatus(
@@ -969,7 +1044,7 @@ function setupCanvasInteractions() {
     }
 
     setSelectedFaces([]);
-    refs.overlayCanvas.setPointerCapture(event.pointerId);
+    surface.setPointerCapture(event.pointerId);
     state.drawing = true;
     state.drawStart = point;
     state.draftRect = { x: point.x, y: point.y, width: 0, height: 0 };
@@ -977,7 +1052,11 @@ function setupCanvasInteractions() {
     setStatus("Drag to place a new sticker.");
   });
 
-  refs.overlayCanvas.addEventListener("pointermove", (event) => {
+  surface.addEventListener("pointermove", (event) => {
+    if (!state.image) {
+      return;
+    }
+
     const point = toCanvasPoint(event);
 
     if (state.editDragging && state.editDragStart && state.editDragFaceId) {
@@ -1026,10 +1105,8 @@ function setupCanvasInteractions() {
     drawOverlay();
   });
 
-  refs.overlayCanvas.addEventListener("pointerup", (event) => {
-    if (refs.overlayCanvas.hasPointerCapture(event.pointerId)) {
-      refs.overlayCanvas.releasePointerCapture(event.pointerId);
-    }
+  surface.addEventListener("pointerup", (event) => {
+    releasePointerCaptureSafe(event);
 
     if (state.editDragging) {
       const editedCount = state.editDragFaceIds.length;
@@ -1057,7 +1134,7 @@ function setupCanvasInteractions() {
 
     state.drawing = false;
 
-    if (state.draftRect && state.draftRect.width >= 20 && state.draftRect.height >= 20) {
+    if (state.draftRect && state.draftRect.width >= MIN_STICKER_DRAG_SIZE && state.draftRect.height >= MIN_STICKER_DRAG_SIZE) {
       const face = createFace({
         box: state.draftRect,
         emoji: state.defaultEmoji,
@@ -1075,7 +1152,9 @@ function setupCanvasInteractions() {
     renderAll();
   });
 
-  refs.overlayCanvas.addEventListener("pointercancel", () => {
+  surface.addEventListener("pointercancel", (event) => {
+    releasePointerCaptureSafe(event);
+
     if (state.editDragging) {
       state.editDragging = false;
       state.editDragMode = null;
@@ -1097,7 +1176,7 @@ function setupCanvasInteractions() {
     drawOverlay();
   });
 
-  refs.overlayCanvas.addEventListener(
+  surface.addEventListener(
     "wheel",
     (event) => {
       if (!state.image) {
@@ -1153,6 +1232,7 @@ function setupCanvasInteractions() {
     setStatus(`Selected all ${state.faces.length} stickers.`);
   });
 }
+
 
 function setupControlEvents() {
   refs.detectBtn.addEventListener("click", () => {

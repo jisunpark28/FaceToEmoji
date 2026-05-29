@@ -113,6 +113,11 @@ h2 {
   background: #eaf0ff;
 }
 
+.canvas-container.has-image {
+  cursor: default;
+  padding: 0;
+}
+
 .canvas-container.dragover .quick-upload-hint {
   border-color: var(--primary);
   background: rgba(235, 241, 255, 0.95);
@@ -123,6 +128,11 @@ h2 {
   width: 100%;
   max-width: 100%;
   line-height: 0;
+  touch-action: none;
+}
+
+#previewCanvas {
+  pointer-events: none;
 }
 
 .canvas-stage canvas {
