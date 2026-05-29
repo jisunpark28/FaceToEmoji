@@ -1313,4 +1313,6 @@ async function init() {
   await loadModels();
 }
 
-window.addEventListener("DOMContentLoaded", init);
+window.addEventListener("load", () => {
+  setTimeout(init, 100);
+});
