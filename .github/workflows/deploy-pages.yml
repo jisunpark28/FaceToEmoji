@@ -1,3 +1,5 @@
+# Optional mirror deploy — production runs on Vercel at https://www.getfacetoemoji.com/
+# Trigger manually: Actions → Deploy FaceToEmoji to Pages → Run workflow
 name: Deploy FaceToEmoji to Pages
 
 on:

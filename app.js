@@ -350,10 +350,6 @@ function getSelectedFaces() {
   return state.faces.filter((face) => faceIdSet.has(face.id));
 }
 
-function getSelectedFace() {
-  return getSelectedFaces()[0] || null;
-}
-
 function toggleSelectedFace(faceId) {
   if (!faceId) {
     return;
