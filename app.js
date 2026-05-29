@@ -1,4 +1,12 @@
 const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+const FACE_API_SCRIPT_URL =
+  "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js";
+const FACE_API_SCRIPT_INTEGRITY =
+  "sha384-gzn2n++arkvyhdNLmUf1s6F5NZ8iAbZ7FhIt+Zw7Jlf1n/vNTmZ3+cYr7S4ogyco=";
+
+let faceApiScriptPromise = null;
+let modelsLoadPromise = null;
+
 const BLUR_CIRCLE_VALUE = "__blur_circle__";
 const TINY_DETECTION_PASSES = [
   { inputSize: 608, scoreThreshold: 0.22 },
@@ -665,8 +673,8 @@ function renderAll() {
 }
 
 async function detectFaces({ enableEditAfter = false } = {}) {
-  if (!state.modelsReady) {
-    setStatus("AI models are still loading. Please wait.", true);
+  const ready = await ensureModelsReady();
+  if (!ready) {
     return;
   }
   if (!state.image) {
@@ -800,39 +808,13 @@ function loadImageFromFile(file) {
 }
 
 
-function waitForModels() {
-  if (state.modelsReady) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const check = () => {
-      if (state.modelsReady) {
-        resolve();
-        return;
-      }
-      if (Date.now() - started > 120000) {
-        resolve();
-        return;
-      }
-      setTimeout(check, 100);
-    };
-    check();
-  });
-}
-
 async function finishImageProcessing() {
   if (!state.image) {
     return;
   }
 
-  if (!state.modelsReady) {
-    setStatus("Loading AI models...");
-    await waitForModels();
-  }
-
-  if (!state.modelsReady) {
+  const ready = await ensureModelsReady();
+  if (!ready) {
     setEditMode(true);
     setStatus("AI models are not ready yet. Edit mode is on — drag on the image to add stickers.", true);
     return;
@@ -1364,8 +1346,32 @@ function setupControlEvents() {
   });
 }
 
+function loadFaceApiScript() {
+  if (typeof faceapi !== "undefined") {
+    return Promise.resolve();
+  }
+  if (faceApiScriptPromise) {
+    return faceApiScriptPromise;
+  }
+
+  faceApiScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = FACE_API_SCRIPT_URL;
+    script.integrity = FACE_API_SCRIPT_INTEGRITY;
+    script.crossOrigin = "anonymous";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      faceApiScriptPromise = null;
+      reject(new Error("Failed to load face-api.js"));
+    };
+    document.head.appendChild(script);
+  });
+
+  return faceApiScriptPromise;
+}
+
 async function loadModels() {
-  setStatus("Loading AI models...");
   try {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -1386,6 +1392,50 @@ async function loadModels() {
   } catch (error) {
     console.error(error);
     setStatus("Failed to load AI models.", true);
+    throw error;
+  }
+}
+
+async function ensureModelsReady() {
+  if (state.modelsReady) {
+    return true;
+  }
+
+  if (!modelsLoadPromise) {
+    modelsLoadPromise = (async () => {
+      setStatus("Loading AI models...");
+      try {
+        await loadFaceApiScript();
+        await loadModels();
+        return state.modelsReady;
+      } catch (error) {
+        console.error(error);
+        setStatus("Failed to load AI models.", true);
+        modelsLoadPromise = null;
+        return false;
+      }
+    })();
+  }
+
+  return modelsLoadPromise;
+}
+
+function loadVercelInsights() {
+  const inject = () => {
+    if (document.querySelector("script[data-vercel-insights]")) {
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "/_vercel/insights/script.js";
+    script.defer = true;
+    script.dataset.vercelInsights = "true";
+    document.body.appendChild(script);
+  };
+
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(inject, { timeout: 4000 });
+  } else {
+    setTimeout(inject, 2000);
   }
 }
 
@@ -1416,9 +1466,12 @@ async function init() {
     syncCanvasStageSize(state.image.width);
   });
 
-  await loadModels();
+  setStatus("Quick upload in Live Preview — tap Auto when you're ready.");
+  loadVercelInsights();
 }
 
-window.addEventListener("load", () => {
-  setTimeout(init, 100);
-});
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
