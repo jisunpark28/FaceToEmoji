@@ -1420,7 +1420,20 @@ async function ensureModelsReady() {
   return modelsLoadPromise;
 }
 
+function shouldLoadVercelInsights() {
+  const host = window.location.hostname;
+  return (
+    host === "www.getfacetoemoji.com" ||
+    host === "getfacetoemoji.com" ||
+    host.endsWith(".vercel.app")
+  );
+}
+
 function loadVercelInsights() {
+  if (!shouldLoadVercelInsights()) {
+    return;
+  }
+
   const inject = () => {
     if (document.querySelector("script[data-vercel-insights]")) {
       return;
