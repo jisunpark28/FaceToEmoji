@@ -22,16 +22,33 @@ It supports automatic face detection, manual face editing, and one-click downloa
 
 ## Run locally
 
+Install dependencies once:
+
 ```bash
-python3 -m http.server 8080
+npm ci
+```
+
+Start a local server (Windows, macOS, Linux — no Python required):
+
+```bash
+npm start
 ```
 
 Open: `http://localhost:8080`
 
+Alternative if you prefer Python:
+
+```bash
+# Windows
+py -m http.server 8080
+
+# macOS / Linux
+python3 -m http.server 8080
+```
+
 For lint and tests:
 
 ```bash
-npm ci
 npm run validate
 ```
 

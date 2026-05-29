@@ -7,10 +7,12 @@
   "scripts": {
     "lint": "eslint app.js",
     "test": "node --test \"test/*.test.mjs\"",
-    "validate": "npm run lint && npm test"
+    "validate": "npm run lint && npm test",
+    "start": "serve -l 8080"
   },
   "devDependencies": {
     "eslint": "^9.28.0",
-    "globals": "^16.2.0"
+    "globals": "^16.2.0",
+    "serve": "^14.2.4"
   }
 }
