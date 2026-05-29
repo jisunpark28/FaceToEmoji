@@ -3,11 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FaceToEmoji - Convert Your Face to Emoji Instantly</title>
-    <meta name="description" content="100% private, in-browser tool to detect faces and automatically convert them into emojis. No image uploads, fast and secure." />
-    <meta name="keywords" content="face to emoji, emoji maker, face detection, auto emoji, privacy friendly emoji tool" />
-    <meta property="og:title" content="FaceToEmoji - Auto Face Detection & Emoji" />
-    <meta property="og:description" content="Automatically detect faces in your photos and cover them with emojis. 100% local browser processing for your privacy." />
+    <title>Face to Emoji – Free Online Converter | GetFaceToEmoji</title>
+    <meta
+      name="description"
+      content="Upload a photo and convert every face to emoji automatically. Free, private, in-browser face to emoji tool at GetFaceToEmoji (getfacetoemoji.com)—no install."
+    />
+    <meta
+      name="keywords"
+      content="face to emoji, get face to emoji, getfacetoemoji, face to emoji converter, emoji maker, face detection, privacy friendly emoji tool"
+    />
+    <meta property="og:site_name" content="GetFaceToEmoji" />
+    <meta property="og:title" content="Face to Emoji – Free Online Converter | GetFaceToEmoji" />
+    <meta
+      property="og:description"
+      content="GetFaceToEmoji detects faces in your photos and replaces them with emojis in your browser. Free face to emoji tool—private, no upload to servers."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.getfacetoemoji.com/" />
     <meta property="og:image" content="https://www.getfacetoemoji.com/og-image.webp" />
@@ -15,17 +25,95 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Face to Emoji – Free Online Converter | GetFaceToEmoji" />
+    <meta
+      name="twitter:description"
+      content="Convert faces to emoji in seconds. Private in-browser face to emoji editing at getfacetoemoji.com."
+    />
     <meta name="twitter:image" content="https://www.getfacetoemoji.com/og-image.webp" />
     <link rel="canonical" href="https://www.getfacetoemoji.com/" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://justadudewhohacks.github.io" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "GetFaceToEmoji",
+            "alternateName": ["FaceToEmoji", "Face to Emoji", "getfacetoemoji"],
+            "url": "https://www.getfacetoemoji.com/",
+            "description": "Free online face to emoji converter. Detect faces in photos and replace them with emojis in your browser—private, no server upload.",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Any",
+            "browserRequirements": "Requires JavaScript",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is face to emoji?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Face to emoji means replacing faces in a photo with emoji stickers. GetFaceToEmoji detects each face automatically and places a matching emoji, with options to edit size and position."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is GetFaceToEmoji free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. GetFaceToEmoji at getfacetoemoji.com is a free online face to emoji tool. No account or app install is required."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Are my photos uploaded to a server?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. All face to emoji processing runs locally in your browser. Your images stay on your device."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I convert a face to emoji?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Open getfacetoemoji.com, upload or drop your image, tap Auto for automatic face detection, then download your face to emoji result. Use Edit to adjust stickers manually."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div class="app-shell">
       <header class="hero">
-        <h1><button id="titleResetBtn" class="title-reset-btn" type="button" aria-label="Reset screen">FaceToEmoji</button></h1>
+        <div class="hero-head">
+          <h1>Face to Emoji – Free Online Tool</h1>
+          <button
+            id="titleResetBtn"
+            class="title-reset-btn"
+            type="button"
+            aria-label="Reset FaceToEmoji screen"
+          >
+            Reset
+          </button>
+        </div>
+        <p class="hero-intro">
+          <strong>GetFaceToEmoji</strong> at getfacetoemoji.com is a free face to emoji converter: upload a
+          photo, detect every face, and replace it with emoji in your browser—private, fast, no install.
+        </p>
       </header>
 
       <main class="workspace">
@@ -96,29 +184,41 @@
         </aside>
       </main>
 
-      <section class="card why-like">
-        <h2>Why People Like FaceToEmoji</h2>
+      <section class="card why-like" aria-labelledby="why-face-to-emoji">
+        <h2 id="why-face-to-emoji">Why use our face to emoji converter?</h2>
         <ul class="why-like-list">
           <li>
-            <h3>💛 100% Private &amp; Secure</h3>
-            <p>Your photos never leave your device. All editing happens right in your browser.</p>
+            <h3>💛 Private face-to-emoji editing</h3>
+            <p>
+              Your photos never leave your device. Every face to emoji conversion runs locally in your
+              browser—ideal when you want a privacy-friendly emoji overlay tool.
+            </p>
           </li>
           <li>
-            <h3>💛 Instant Face Detection</h3>
-            <p>It saves you time. Our smart tool finds all the faces in your photo automatically in seconds.</p>
+            <h3>💛 Automatic face detection for emoji overlays</h3>
+            <p>
+              GetFaceToEmoji finds faces in your photo in seconds so you can convert face to emoji without
+              placing each sticker by hand.
+            </p>
           </li>
           <li>
-            <h3>💛 Auto-Fit &amp; Easy Tweaks</h3>
-            <p>Emojis snap perfectly to faces. You can easily adjust size, position, and opacity if you want the perfect look.</p>
+            <h3>💛 Adjust size, position, and opacity</h3>
+            <p>
+              Emojis snap to faces automatically. Fine-tune each face to emoji sticker for the look you want
+              before you download.
+            </p>
           </li>
           <li>
-            <h3>💛 No App Required</h3>
-            <p>Just open the page. Works seamlessly on your phone, tablet, or desktop without any installation.</p>
+            <h3>💛 No app—use getfacetoemoji.com anywhere</h3>
+            <p>
+              Open this free face to emoji tool on your phone, tablet, or desktop. No install or account
+              required.
+            </p>
           </li>
         </ul>
       </section>
     </div>
 
     <script defer src="./app.js"></script>
-</body>
+  </body>
 </html>

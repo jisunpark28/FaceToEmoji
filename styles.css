@@ -62,10 +62,6 @@ body {
   border-radius: 6px;
 }
 
-.hero p {
-  margin: 8px 0 0;
-  color: var(--muted);
-}
 
 .workspace {
   display: grid;
@@ -94,7 +90,7 @@ h2 {
 
 .canvas-container {
   width: 100%;
-  min-height: clamp(280px, 52vh, 500px);
+  min-height: 500px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #f0f3fb;
@@ -299,8 +295,6 @@ input[type="range"] {
 
 .why-like {
   margin-top: 14px;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 420px;
 }
 
 .why-like h2 {
