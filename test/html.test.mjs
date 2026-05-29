@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 const SITE_URL = "https://www.getfacetoemoji.com/";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const appJs = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
 test("index.html has no stray markdown fences", () => {
   assert.doesNotMatch(html, /```/);
@@ -18,8 +19,26 @@ test("index.html declares canonical and OG URLs on production domain", () => {
   );
 });
 
-test("face-api.js is loaded with Subresource Integrity", () => {
-  assert.match(html, /face-api\.min\.js/);
-  assert.match(html, /integrity="sha384-[^"]+"/);
-  assert.match(html, /crossorigin="anonymous"/);
+test("index.html preconnects to face-api CDN and model host", () => {
+  assert.match(html, /<link rel="preconnect" href="https:\/\/cdn\.jsdelivr\.net"/);
+  assert.match(
+    html,
+    /<link rel="preconnect" href="https:\/\/justadudewhohacks\.github\.io"/,
+  );
+});
+
+test("index.html exposes favicon and defers heavy scripts", () => {
+  assert.match(html, /<link rel="icon" href="\.\/favicon\.svg"/);
+  assert.doesNotMatch(html, /face-api\.min\.js/);
+  assert.doesNotMatch(html, /_vercel\/insights\/script\.js/);
+});
+
+test("app.js lazy-loads face-api with Subresource Integrity", () => {
+  assert.match(appJs, /FACE_API_SCRIPT_URL/);
+  assert.match(appJs, /FACE_API_SCRIPT_INTEGRITY/);
+  assert.match(appJs, /loadFaceApiScript/);
+  assert.match(
+    appJs,
+    /sha384-gzn2n\+\+arkvyhdNLmUf1s6F5NZ8iAbZ7FhIt\+Zw7Jlf1n\/vNTmZ3\+cYr7S4ogyco=/,
+  );
 });

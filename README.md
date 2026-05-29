@@ -52,6 +52,11 @@ For lint and tests:
 npm run validate
 ```
 
+
+## Performance (Lighthouse)
+
+Initial page load avoids blocking on face-api.js and Vercel Insights. Models load on first **Auto** run or after image upload. For a fair Lighthouse run, use an **Incognito** window (or a clean profile) so browser extensions do not skew scores.
+
 ## Deploy
 
 | Environment | URL | Role |
