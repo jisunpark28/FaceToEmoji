@@ -448,6 +448,7 @@ function updateOverlayCursor() {
   const cursor = state.editMode ? "crosshair" : "pointer";
   refs.canvasStage.style.cursor = cursor;
   refs.overlayCanvas.style.cursor = cursor;
+  refs.overlayCanvas.style.touchAction = state.editMode ? "none" : "pan-y";
 }
 
 function syncQuickUploadHint() {
@@ -551,16 +552,53 @@ function syncControlsForSelection() {
   syncSizeControl(averageSize);
 }
 
+let canvasLayoutWidth = 0;
+
 function syncCanvasStageSize(imageWidth) {
   if (!state.image) {
     refs.canvasStage.style.width = "100%";
+    refs.canvasStage.style.aspectRatio = "";
     return;
   }
+
+  if (isMobileLayout()) {
+    refs.canvasStage.style.width = "100%";
+    refs.canvasStage.style.maxWidth = "100%";
+    refs.canvasStage.style.aspectRatio = `${state.image.width} / ${state.image.height}`;
+    return;
+  }
+
   const containerWidth = refs.canvasContainer.getBoundingClientRect().width;
   const availableWidth = Math.max(220, containerWidth - 20);
   const stageWidth = Math.min(imageWidth, availableWidth);
   refs.canvasStage.style.width = `${stageWidth}px`;
   refs.canvasStage.style.maxWidth = "100%";
+  refs.canvasStage.style.aspectRatio = "";
+}
+
+function handleWindowLayoutChange() {
+  if (!state.image) {
+    return;
+  }
+  if (isMobileLayout()) {
+    return;
+  }
+  const containerWidth = refs.canvasContainer.getBoundingClientRect().width;
+  if (Math.abs(containerWidth - canvasLayoutWidth) < 4) {
+    return;
+  }
+  canvasLayoutWidth = containerWidth;
+  syncCanvasStageSize(state.image.width);
+}
+
+function handleOrientationChange() {
+  if (!state.image) {
+    return;
+  }
+  window.setTimeout(() => {
+    canvasLayoutWidth = 0;
+    syncCanvasStageSize(state.image.width);
+  }, 150);
 }
 
 function resizeCanvases(width, height) {
@@ -588,6 +626,7 @@ function clearLoadedImage() {
   refs.overlayCanvas.width = 0;
   refs.overlayCanvas.height = 0;
   refs.canvasStage.style.width = "100%";
+  refs.canvasStage.style.aspectRatio = "";
   setEditMode(false, false);
   renderAll();
   setStatus("");
@@ -1714,12 +1753,9 @@ async function init() {
   setupCanvasInteractions();
   setupTitleReset();
 
-  window.addEventListener("resize", () => {
-    if (!state.image) {
-      return;
-    }
-    syncCanvasStageSize(state.image.width);
-  });
+  canvasLayoutWidth = refs.canvasContainer.getBoundingClientRect().width;
+  window.addEventListener("resize", handleWindowLayoutChange);
+  window.addEventListener("orientationchange", handleOrientationChange);
 
   setStatus("Quick upload in Live Preview — tap Auto when you're ready.");
   loadVercelInsights();
