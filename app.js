@@ -18,8 +18,7 @@ const SSD_DETECTION_PASSES = [
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
-const MAX_IMAGE_LONG_EDGE_MOBILE = 1536;
-const MAX_IMAGE_LONG_EDGE_DESKTOP = 2560;
+const MAX_IMAGE_LONG_EDGE_MOBILE = 1280;
 
 const MIN_STICKER_DRAG_SIZE = 12;
 
@@ -238,13 +237,16 @@ function isMobileLayout() {
 }
 
 function normalizeImageForProcessing(image) {
-  const maxLongEdge = isMobileLayout() ? MAX_IMAGE_LONG_EDGE_MOBILE : MAX_IMAGE_LONG_EDGE_DESKTOP;
-  const longEdge = Math.max(image.width, image.height);
-  if (longEdge <= maxLongEdge) {
+  if (!isMobileLayout()) {
     return image;
   }
 
-  const scale = maxLongEdge / longEdge;
+  const longEdge = Math.max(image.width, image.height);
+  if (longEdge <= MAX_IMAGE_LONG_EDGE_MOBILE) {
+    return image;
+  }
+
+  const scale = MAX_IMAGE_LONG_EDGE_MOBILE / longEdge;
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
@@ -423,7 +425,11 @@ function syncQuickUploadHint() {
   if (hasImage) {
     refs.canvasContainer.removeAttribute("role");
     refs.canvasContainer.removeAttribute("tabindex");
-    syncCanvasStageSize(state.image.width);
+    if (isMobileLayout()) {
+      syncCanvasStageSize(state.image.width);
+    } else {
+      refs.canvasStage.style.width = "100%";
+    }
   } else {
     refs.canvasContainer.setAttribute("role", "button");
     refs.canvasContainer.setAttribute("tabindex", "0");
@@ -533,7 +539,7 @@ function resizeCanvases(width, height) {
 }
 
 function clearLoadedImage() {
-  if (state.isProcessing) {
+  if (isMobileLayout() && state.isProcessing) {
     return;
   }
   state.image = null;
@@ -875,21 +881,24 @@ async function onFileSelected(file) {
     setStatus("Please upload an image file.", true);
     return;
   }
-  if (state.isProcessing) {
+  const onMobile = isMobileLayout();
+  if (onMobile && state.isProcessing) {
     return;
   }
 
-  const generation = ++state.processingGeneration;
-  state.isProcessing = true;
+  const generation = onMobile ? ++state.processingGeneration : 0;
+  if (onMobile) {
+    state.isProcessing = true;
+  }
 
   try {
     setStatus("Loading image...");
     let image = await loadImageFromFile(file);
-    if (generation !== state.processingGeneration) {
+    if (onMobile && generation !== state.processingGeneration) {
       return;
     }
     image = normalizeImageForProcessing(image);
-    if (generation !== state.processingGeneration) {
+    if (onMobile && generation !== state.processingGeneration) {
       return;
     }
     state.image = image;
@@ -905,7 +914,7 @@ async function onFileSelected(file) {
     setStatus("Image upload failed.", true);
   } finally {
     refs.imageInput.value = "";
-    if (generation === state.processingGeneration) {
+    if (onMobile && generation === state.processingGeneration) {
       state.isProcessing = false;
     }
   }
@@ -917,7 +926,7 @@ function setupTitleReset() {
   }
 
   refs.titleResetBtn.addEventListener("click", () => {
-    if (state.isProcessing) {
+    if (isMobileLayout() && state.isProcessing) {
       return;
     }
     clearLoadedImage();
@@ -937,7 +946,7 @@ function setupQuickUploadArea() {
 
   refs.removeImageBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (!state.image || state.isProcessing) {
+    if (!state.image || (isMobileLayout() && state.isProcessing)) {
       return;
     }
     clearLoadedImage();
