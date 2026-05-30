@@ -13,12 +13,14 @@ const TINY_DETECTION_PASSES = [
   { inputSize: 512, scoreThreshold: 0.26 },
   { inputSize: 416, scoreThreshold: 0.3 },
 ];
+const MOBILE_TINY_DETECTION_PASSES = [{ inputSize: 416, scoreThreshold: 0.3 }];
 const SSD_DETECTION_PASSES = [
   { minConfidence: 0.2, maxResults: 180 },
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
-const MAX_IMAGE_LONG_EDGE_MOBILE = 1280;
+const MAX_IMAGE_LONG_EDGE_MOBILE = 960;
+const MAX_MOBILE_MEGAPIXELS = 0.9;
 
 const MIN_STICKER_DRAG_SIZE = 12;
 
@@ -232,6 +234,17 @@ function dedupeDetectionCandidates(candidates) {
 }
 
 
+
+function yieldToMainThread() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+function getTinyDetectionPasses() {
+  return isMobileLayout() ? MOBILE_TINY_DETECTION_PASSES : TINY_DETECTION_PASSES;
+}
+
 function isMobileLayout() {
   return window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
 }
@@ -241,12 +254,21 @@ function normalizeImageForProcessing(image) {
     return image;
   }
 
+  let scale = 1;
   const longEdge = Math.max(image.width, image.height);
-  if (longEdge <= MAX_IMAGE_LONG_EDGE_MOBILE) {
+  if (longEdge > MAX_IMAGE_LONG_EDGE_MOBILE) {
+    scale = Math.min(scale, MAX_IMAGE_LONG_EDGE_MOBILE / longEdge);
+  }
+
+  const megapixels = (image.width * image.height) / 1_000_000;
+  if (megapixels > MAX_MOBILE_MEGAPIXELS) {
+    scale = Math.min(scale, Math.sqrt(MAX_MOBILE_MEGAPIXELS / megapixels));
+  }
+
+  if (scale >= 0.999) {
     return image;
   }
 
-  const scale = MAX_IMAGE_LONG_EDGE_MOBILE / longEdge;
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
@@ -260,7 +282,7 @@ function normalizeImageForProcessing(image) {
 
 function shouldRunEnhancedDetection(image, baselineCount) {
   if (isMobileLayout()) {
-    return baselineCount === 0;
+    return false;
   }
 
   const longEdge = Math.max(image.width, image.height);
@@ -319,23 +341,34 @@ function buildMirroredSource(image) {
 
 async function runTinyDetectionPasses(source, sourceScale = 1, mirroredWidth = 0) {
   let candidates = [];
+  const passes = getTinyDetectionPasses();
+  const withExpressions = !isMobileLayout();
 
-  for (const pass of TINY_DETECTION_PASSES) {
+  for (const pass of passes) {
     const options = new faceapi.TinyFaceDetectorOptions({
       inputSize: pass.inputSize,
       scoreThreshold: pass.scoreThreshold,
     });
 
     try {
-      const detections = await faceapi.detectAllFaces(source, options).withFaceExpressions();
+      const detector = faceapi.detectAllFaces(source, options);
+      const detections = withExpressions ? await detector.withFaceExpressions() : await detector;
       detections.forEach((det) => {
         const normalized = normalizeDetectionEntry(det, sourceScale, mirroredWidth);
         if (normalized) {
           candidates.push(normalized);
         }
       });
+
+      if (isMobileLayout() && candidates.length > 0) {
+        break;
+      }
     } catch (error) {
       console.warn("Tiny detection pass failed", pass, error);
+    }
+
+    if (isMobileLayout()) {
+      await yieldToMainThread();
     }
   }
 
@@ -724,9 +757,12 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     return;
   }
 
-  setStatus("Detecting faces...");
+  setStatus(isMobileLayout() ? "Detecting faces (mobile mode)..." : "Detecting faces...");
   try {
     let candidates = await runTinyDetectionPasses(state.image, 1, 0);
+    if (isMobileLayout()) {
+      await yieldToMainThread();
+    }
 
     const baseline = dedupeDetectionCandidates(candidates);
     if (shouldRunEnhancedDetection(state.image, baseline.length)) {
@@ -841,7 +877,29 @@ function buildDraftRect(start, point, lockSquare = false) {
   return { x, y, width, height };
 }
 
-function loadImageFromFile(file) {
+async function loadImageFromFile(file) {
+  if (isMobileLayout() && typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file, {
+        resizeWidth: MAX_IMAGE_LONG_EDGE_MOBILE,
+        resizeQuality: "medium",
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        bitmap.close?.();
+        throw new Error("Canvas unavailable");
+      }
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close?.();
+      return canvas;
+    } catch (error) {
+      console.warn("createImageBitmap resize failed, falling back to Image()", error);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -1445,22 +1503,29 @@ function loadFaceApiScript() {
 
 async function loadModels() {
   try {
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-    ]);
+    const modelLoads = [faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)];
+    if (!isMobileLayout()) {
+      modelLoads.push(faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL));
+    }
+    await Promise.all(modelLoads);
 
     state.modelsReady = true;
-    setStatus("Models ready. Quick upload in Live Preview.");
+    setStatus(
+      isMobileLayout()
+        ? "Models ready. Mobile uses lighter detection."
+        : "Models ready. Quick upload in Live Preview.",
+    );
 
-    faceapi.nets.ssdMobilenetv1
-      .loadFromUri(MODEL_URL)
-      .then(() => {
-        state.ssdModelReady = true;
-      })
-      .catch((error) => {
-        console.warn("Optional SSD model failed to load", error);
-      });
+    if (!isMobileLayout()) {
+      faceapi.nets.ssdMobilenetv1
+        .loadFromUri(MODEL_URL)
+        .then(() => {
+          state.ssdModelReady = true;
+        })
+        .catch((error) => {
+          console.warn("Optional SSD model failed to load", error);
+        });
+    }
   } catch (error) {
     console.error(error);
     setStatus("Failed to load AI models.", true);
