@@ -13,14 +13,17 @@ const TINY_DETECTION_PASSES = [
   { inputSize: 512, scoreThreshold: 0.26 },
   { inputSize: 416, scoreThreshold: 0.3 },
 ];
-const MOBILE_TINY_DETECTION_PASSES = [{ inputSize: 416, scoreThreshold: 0.3 }];
+const MOBILE_TINY_DETECTION_PASSES = [
+  { inputSize: 512, scoreThreshold: 0.24 },
+  { inputSize: 416, scoreThreshold: 0.28 },
+];
 const SSD_DETECTION_PASSES = [
   { minConfidence: 0.2, maxResults: 180 },
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
-const MAX_IMAGE_LONG_EDGE_MOBILE = 960;
-const MAX_MOBILE_MEGAPIXELS = 0.9;
+const MAX_IMAGE_LONG_EDGE_MOBILE = 800;
+const MAX_MOBILE_MEGAPIXELS = 0.75;
 
 const MIN_STICKER_DRAG_SIZE = 12;
 
@@ -143,6 +146,14 @@ function pickExpression(expressions = {}) {
   });
 
   return chosen;
+}
+
+function getStickerEmojiForDetection(det) {
+  if (isMobileLayout()) {
+    return BLUR_CIRCLE_VALUE;
+  }
+  const expression = pickExpression(det.expressions);
+  return expressionToEmoji[expression] || state.defaultEmoji;
 }
 
 function normalizeDetectionEntry(det, sourceScale = 1, mirroredWidth = 0) {
@@ -280,6 +291,20 @@ function normalizeImageForProcessing(image) {
   return canvas;
 }
 
+function shouldRunMobileEnhancedDetection(image, baselineCount) {
+  if (!isMobileLayout()) {
+    return false;
+  }
+  if (baselineCount >= 4) {
+    return false;
+  }
+  if (baselineCount === 0) {
+    return true;
+  }
+  const megapixels = (image.width * image.height) / 1_000_000;
+  return megapixels >= 0.35 && baselineCount <= 2;
+}
+
 function shouldRunEnhancedDetection(image, baselineCount) {
   if (isMobileLayout()) {
     return false;
@@ -360,9 +385,6 @@ async function runTinyDetectionPasses(source, sourceScale = 1, mirroredWidth = 0
         }
       });
 
-      if (isMobileLayout() && candidates.length > 0) {
-        break;
-      }
     } catch (error) {
       console.warn("Tiny detection pass failed", pass, error);
     }
@@ -756,7 +778,8 @@ function boxBlurImageData(imageData, width, height, radius) {
     }
   };
 
-  for (let pass = 0; pass < 3; pass += 1) {
+  const blurPasses = isMobileLayout() ? 2 : 3;
+  for (let pass = 0; pass < blurPasses; pass += 1) {
     blurHorizontal(channel, tmp);
     blurVertical(tmp, channel);
   }
@@ -1050,7 +1073,9 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     return;
   }
 
-  setStatus(isMobileLayout() ? "Detecting faces (mobile mode)..." : "Detecting faces...");
+  setStatus(
+    isMobileLayout() ? "Detecting faces and applying blur..." : "Detecting faces...",
+  );
   try {
     let candidates = await runTinyDetectionPasses(state.image, 1, 0);
     if (isMobileLayout()) {
@@ -1058,14 +1083,14 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     }
 
     const baseline = dedupeDetectionCandidates(candidates);
-    if (shouldRunEnhancedDetection(state.image, baseline.length)) {
-      if (isMobileLayout()) {
-        const mirrored = buildMirroredSource(state.image);
-        if (mirrored) {
-          const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
-          candidates = candidates.concat(tinyMirrored);
-        }
-      } else {
+    if (shouldRunMobileEnhancedDetection(state.image, baseline.length)) {
+      await yieldToMainThread();
+      const mirrored = buildMirroredSource(state.image);
+      if (mirrored) {
+        const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
+        candidates = candidates.concat(tinyMirrored);
+      }
+    } else if (shouldRunEnhancedDetection(state.image, baseline.length)) {
         const upscaled = buildUpscaledSource(state.image);
         if (upscaled) {
           const tinyUpscaled = await runTinyDetectionPasses(upscaled.canvas, upscaled.scale, 0);
@@ -1083,14 +1108,13 @@ async function detectFaces({ enableEditAfter = false } = {}) {
 
         const ssdBase = await runSsdDetectionPasses(state.image, 1, 0);
         candidates = candidates.concat(ssdBase);
-      }
     }
 
     const merged = dedupeDetectionCandidates(candidates);
 
     state.faces = merged.map((det) => {
-      const expression = pickExpression(det.expressions);
-      const emoji = expressionToEmoji[expression] || state.defaultEmoji;
+      const expression = isMobileLayout() ? "neutral" : pickExpression(det.expressions);
+      const emoji = getStickerEmojiForDetection(det);
       return createFace({
         box: det.box,
         expression,
@@ -1106,7 +1130,11 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     if (state.faces.length === 0) {
       if (enableEditAfter) {
         setEditMode(true);
-        setStatus("No faces detected. Edit mode is on — drag on the image to add a sticker.");
+        setStatus(
+          isMobileLayout()
+            ? "No faces detected. Edit mode is on — drag on the image to add blur."
+            : "No faces detected. Edit mode is on — drag on the image to add a sticker.",
+        );
       } else {
         setStatus("No faces detected. Turn on Edit and drag to add one manually.");
       }
@@ -1115,7 +1143,11 @@ async function detectFaces({ enableEditAfter = false } = {}) {
 
     if (enableEditAfter) {
       setEditMode(true);
-      setStatus(`Auto detected ${state.faces.length} face(s). Edit mode is on — drag stickers to adjust.`);
+      setStatus(
+        isMobileLayout()
+          ? `Blurred ${state.faces.length} face(s). Edit mode is on — drag or adjust stickers.`
+          : `Auto detected ${state.faces.length} face(s). Edit mode is on — drag stickers to adjust.`,
+      );
     } else {
       setStatus(`Auto detected ${state.faces.length} face(s).`);
     }
@@ -1173,10 +1205,27 @@ function buildDraftRect(start, point, lockSquare = false) {
 async function loadImageFromFile(file) {
   if (isMobileLayout() && typeof createImageBitmap === "function") {
     try {
-      const bitmap = await createImageBitmap(file, {
-        resizeWidth: MAX_IMAGE_LONG_EDGE_MOBILE,
-        resizeQuality: "medium",
-      });
+      let bitmap = await createImageBitmap(file);
+      let scale = 1;
+      const longEdge = Math.max(bitmap.width, bitmap.height);
+      if (longEdge > MAX_IMAGE_LONG_EDGE_MOBILE) {
+        scale = Math.min(scale, MAX_IMAGE_LONG_EDGE_MOBILE / longEdge);
+      }
+      const megapixels = (bitmap.width * bitmap.height) / 1_000_000;
+      if (megapixels > MAX_MOBILE_MEGAPIXELS) {
+        scale = Math.min(scale, Math.sqrt(MAX_MOBILE_MEGAPIXELS / megapixels));
+      }
+      if (scale < 0.999) {
+        const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+        const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+        const resized = await createImageBitmap(bitmap, {
+          resizeWidth: targetWidth,
+          resizeHeight: targetHeight,
+          resizeQuality: "medium",
+        });
+        bitmap.close?.();
+        bitmap = resized;
+      }
       const canvas = document.createElement("canvas");
       canvas.width = bitmap.width;
       canvas.height = bitmap.height;
@@ -1641,7 +1690,7 @@ function setupCanvasInteractions() {
 
 function setupControlEvents() {
   refs.detectBtn.addEventListener("click", () => {
-    detectFaces();
+    detectFaces({ enableEditAfter: true });
   });
 
   refs.editBtn.addEventListener("click", () => {
@@ -1797,7 +1846,7 @@ async function loadModels() {
     state.modelsReady = true;
     setStatus(
       isMobileLayout()
-        ? "Models ready. Mobile uses lighter detection."
+        ? "Models ready. Upload a photo — faces blur automatically."
         : "Models ready. Quick upload in Live Preview.",
     );
 
@@ -1883,6 +1932,9 @@ async function init() {
   appInitialized = true;
 
   refs.canvasStage.style.width = "100%";
+  if (isMobileLayout()) {
+    state.defaultEmoji = BLUR_CIRCLE_VALUE;
+  }
   refs.emojiSelect.value = state.defaultEmoji;
   refs.editBtn.classList.remove("active");
   updateOverlayCursor();
