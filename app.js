@@ -660,25 +660,166 @@ function createFace({ box, emoji, opacity, size = 1, expression = "neutral", man
   };
 }
 
+
+let canvasFilterBlurSupported;
+
+const blurPatchCanvas = document.createElement("canvas");
+const blurPatchCtx = blurPatchCanvas.getContext("2d", { willReadFrequently: true });
+
+function supportsCanvasFilterBlur() {
+  if (canvasFilterBlurSupported !== undefined) {
+    return canvasFilterBlurSupported;
+  }
+
+  try {
+    const src = document.createElement("canvas");
+    src.width = 5;
+    src.height = 5;
+    const sctx = src.getContext("2d");
+    sctx.fillStyle = "#000";
+    sctx.fillRect(0, 0, 5, 5);
+    sctx.fillStyle = "#fff";
+    sctx.fillRect(2, 2, 1, 1);
+
+    const dest = document.createElement("canvas");
+    dest.width = 5;
+    dest.height = 5;
+    const dctx = dest.getContext("2d");
+    dctx.filter = "blur(2px)";
+    dctx.drawImage(src, 0, 0);
+    dctx.filter = "none";
+    const sample = dctx.getImageData(2, 1, 1, 1).data;
+    canvasFilterBlurSupported = sample[0] > 12 || sample[1] > 12 || sample[2] > 12;
+  } catch {
+    canvasFilterBlurSupported = false;
+  }
+
+  return canvasFilterBlurSupported;
+}
+
+function boxBlurImageData(imageData, width, height, radius) {
+  const r = Math.max(1, Math.min(48, Math.floor(radius)));
+  let channel = imageData.data;
+  const tmp = new Uint8ClampedArray(channel.length);
+  const w = width;
+  const h = height;
+
+  const blurHorizontal = (input, output) => {
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        let rs = 0;
+        let gs = 0;
+        let bs = 0;
+        let as = 0;
+        let count = 0;
+        for (let k = -r; k <= r; k += 1) {
+          const px = Math.min(w - 1, Math.max(0, x + k));
+          const i = (y * w + px) * 4;
+          rs += input[i];
+          gs += input[i + 1];
+          bs += input[i + 2];
+          as += input[i + 3];
+          count += 1;
+        }
+        const o = (y * w + x) * 4;
+        output[o] = (rs / count) | 0;
+        output[o + 1] = (gs / count) | 0;
+        output[o + 2] = (bs / count) | 0;
+        output[o + 3] = (as / count) | 0;
+      }
+    }
+  };
+
+  const blurVertical = (input, output) => {
+    for (let x = 0; x < w; x += 1) {
+      for (let y = 0; y < h; y += 1) {
+        let rs = 0;
+        let gs = 0;
+        let bs = 0;
+        let as = 0;
+        let count = 0;
+        for (let k = -r; k <= r; k += 1) {
+          const py = Math.min(h - 1, Math.max(0, y + k));
+          const i = (py * w + x) * 4;
+          rs += input[i];
+          gs += input[i + 1];
+          bs += input[i + 2];
+          as += input[i + 3];
+          count += 1;
+        }
+        const o = (y * w + x) * 4;
+        output[o] = (rs / count) | 0;
+        output[o + 1] = (gs / count) | 0;
+        output[o + 2] = (bs / count) | 0;
+        output[o + 3] = (as / count) | 0;
+      }
+    }
+  };
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    blurHorizontal(channel, tmp);
+    blurVertical(tmp, channel);
+  }
+}
+
+function createBlurredPatch(source, cx, cy, radius, blurStrength) {
+  const sourceWidth = source.naturalWidth || source.width;
+  const sourceHeight = source.naturalHeight || source.height;
+  const pad = Math.ceil(blurStrength * 2.5);
+  const left = Math.max(0, Math.floor(cx - radius - pad));
+  const top = Math.max(0, Math.floor(cy - radius - pad));
+  const right = Math.min(sourceWidth, Math.ceil(cx + radius + pad));
+  const bottom = Math.min(sourceHeight, Math.ceil(cy + radius + pad));
+  const patchWidth = Math.max(1, right - left);
+  const patchHeight = Math.max(1, bottom - top);
+
+  blurPatchCanvas.width = patchWidth;
+  blurPatchCanvas.height = patchHeight;
+  blurPatchCtx.clearRect(0, 0, patchWidth, patchHeight);
+  blurPatchCtx.drawImage(source, left, top, patchWidth, patchHeight, 0, 0, patchWidth, patchHeight);
+
+  const imageData = blurPatchCtx.getImageData(0, 0, patchWidth, patchHeight);
+  const stackRadius = Math.max(4, Math.round(blurStrength * 0.45));
+  boxBlurImageData(imageData, patchWidth, patchHeight, stackRadius);
+  blurPatchCtx.putImageData(imageData, 0, 0);
+
+  return { canvas: blurPatchCanvas, left, top };
+}
+
+function drawBlurCircleSticker(ctx, face) {
+  const { x, y, width, height } = face.box;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const blurScale = clampSize(face.size ?? 1);
+  const radius = Math.max(12, (Math.min(width, height) / 2) * blurScale);
+  const blurStrength = Math.max(8, Math.min(42, Math.round(radius * 0.22)));
+
+  ctx.save();
+  ctx.globalAlpha = clampOpacity(face.opacity);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+
+  if (supportsCanvasFilterBlur()) {
+    ctx.filter = `blur(${blurStrength}px)`;
+    ctx.drawImage(state.image, 0, 0);
+    ctx.filter = "none";
+    ctx.restore();
+    return;
+  }
+
+  const patch = createBlurredPatch(state.image, cx, cy, radius, blurStrength);
+  ctx.drawImage(patch.canvas, patch.left, patch.top);
+  ctx.restore();
+}
+
 function drawEmojiSticker(ctx, face) {
   const { x, y, width, height } = face.box;
   const cx = x + width / 2;
   const cy = y + height / 2;
 
   if (face.emoji === BLUR_CIRCLE_VALUE && state.image) {
-    const blurScale = clampSize(face.size ?? 1);
-    const radius = Math.max(12, (Math.min(width, height) / 2) * blurScale);
-    const blurStrength = Math.max(8, Math.min(42, Math.round(radius * 0.22)));
-
-    ctx.save();
-    ctx.globalAlpha = clampOpacity(face.opacity);
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.filter = `blur(${blurStrength}px)`;
-    ctx.drawImage(state.image, 0, 0);
-    ctx.filter = "none";
-    ctx.restore();
+    drawBlurCircleSticker(ctx, face);
     return;
   }
 
