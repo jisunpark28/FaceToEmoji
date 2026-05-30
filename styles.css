@@ -62,6 +62,10 @@ body {
   border-radius: 6px;
 }
 
+.hero p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
 
 .workspace {
   display: grid;
@@ -371,4 +375,131 @@ input[type="range"] {
   .button-row {
     grid-template-columns: 1fr;
   }
+}
+
+.site-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  margin-bottom: 8px;
+}
+
+.site-footer a {
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
+}
+
+.site-footer a[aria-current="page"] {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.site-footer-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.app-shell--static {
+  max-width: 760px;
+}
+
+.page-header {
+  margin-bottom: 14px;
+}
+
+.page-brand {
+  display: inline-block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.page-brand:hover {
+  color: var(--primary);
+}
+
+.static-page h1 {
+  margin: 0 0 10px;
+  font-size: 1.55rem;
+}
+
+.static-page h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.static-page a {
+  color: var(--primary);
+}
+
+.faq-list {
+  margin: 1rem 0 0;
+}
+
+.faq-list dt {
+  margin-top: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.faq-list dt:first-child {
+  margin-top: 0;
+}
+
+.faq-list dd {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.steps-list,
+.tips-list {
+  margin: 1rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.steps-list li,
+.tips-list li {
+  margin-bottom: 0.65rem;
+}
+
+.steps-list strong,
+.tips-list strong {
+  color: var(--text);
+}
+
+.static-cta {
+  margin-top: 1.5rem;
+}
+
+.static-cta a {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff !important;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.static-cta a:hover {
+  background: #274ecf;
+  text-decoration: none;
 }
