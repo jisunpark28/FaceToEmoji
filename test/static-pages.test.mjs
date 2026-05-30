@@ -17,14 +17,16 @@ test("index.html footer links to FAQ and How it works", () => {
 });
 
 test("faq page exists with FAQ content and footer", () => {
-  assert.match(faqHtml, /<h1>Frequently asked questions<\/h1>/);
+  assert.match(faqHtml, /<h1>Common questions<\/h1>/);
+  assert.match(faqHtml, /class="faq-stack"/);
   assert.match(faqHtml, /"@type":\s*"FAQPage"/);
   assert.match(faqHtml, /href="\/how-it-works\/"/);
   assert.match(faqHtml, /rel="canonical" href="https:\/\/www\.getfacetoemoji\.com\/faq\/"/);
 });
 
 test("how-it-works page exists with steps and HowTo schema", () => {
-  assert.match(howHtml, /How to convert face to emoji/);
+  assert.match(howHtml, /<h1>How it works<\/h1>/);
+  assert.match(howHtml, /class="step-cards"/);
   assert.match(howHtml, /"@type":\s*"HowTo"/);
   assert.match(howHtml, /href="\/faq\/"/);
   assert.match(
