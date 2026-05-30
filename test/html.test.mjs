@@ -42,3 +42,17 @@ test("app.js lazy-loads face-api with Subresource Integrity", () => {
     /sha384-gzn2n\+\+arkvyhdNLmUf1s6F5NZ8iAbZ7FhIt\+Zw7Jlf1n\/vNTmZ3\+cYr7S4ogyco=/,
   );
 });
+test("index.html targets face to emoji keywords in title and hero", () => {
+  assert.match(html, /<title>Face to Emoji/i);
+  assert.match(html, /name="description"[^>]*face to emoji/i);
+  assert.match(html, /titleResetBtn[\s\S]*Face to Emoji/i);
+  assert.match(html, /getfacetoemoji\.com/i);
+});
+
+test("index.html includes structured data for WebApplication and FAQ", () => {
+  assert.match(html, /application\/ld\+json/);
+  assert.match(html, /"@type":\s*"WebApplication"/);
+  assert.match(html, /"@type":\s*"FAQPage"/);
+  assert.match(html, /What is face to emoji\?/);
+});
+
