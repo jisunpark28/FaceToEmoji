@@ -65,6 +65,11 @@ const state = {
   processingGeneration: 0,
 };
 
+
+function analytics() {
+  return window.FTEAnalytics || null;
+}
+
 const refs = {
   imageInput: document.getElementById("imageInput"),
   canvasContainer: document.getElementById("canvasContainer"),
@@ -632,6 +637,7 @@ function resizeCanvases(width, height) {
 }
 
 function clearLoadedImage() {
+  analytics()?.resetSession();
   if (isMobileLayout() && state.isProcessing) {
     return;
   }
@@ -1032,6 +1038,7 @@ async function downloadEditedImage() {
     try {
       await navigator.share({ files: [file], title: "FaceToEmoji" });
       setStatus("Tap Save Image in the share sheet.");
+      analytics()?.trackDownload("share");
       return;
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -1049,11 +1056,13 @@ async function downloadEditedImage() {
       triggerAnchorDownload(url, fileName);
       URL.revokeObjectURL(url);
       setStatus("Download started.");
+      analytics()?.trackDownload("anchor");
       return;
     }
 
     openBlobInNewTab(url);
     setStatus("Image opened — long-press and choose Save Image.");
+    analytics()?.trackDownload("ios_tab");
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (error) {
     URL.revokeObjectURL(url);
@@ -1127,6 +1136,10 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     setSelectedFaces(state.faces[0] ? [state.faces[0].id] : []);
     renderAll();
 
+    if (state.faces.length > 0) {
+      analytics()?.trackDetectOk(state.faces.length);
+    }
+
     if (state.faces.length === 0) {
       if (enableEditAfter) {
         setEditMode(true);
@@ -1138,6 +1151,7 @@ async function detectFaces({ enableEditAfter = false } = {}) {
       } else {
         setStatus("No faces detected. Turn on Edit and drag to add one manually.");
       }
+      analytics()?.trackDetectEmpty();
       return;
     }
 
@@ -1153,6 +1167,7 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     }
   } catch (error) {
     console.error(error);
+    analytics()?.trackDetectFail();
     setStatus("Detection failed. Please try another photo.", true);
   }
 }
@@ -1308,6 +1323,9 @@ async function onFileSelected(file) {
     state.draftRect = null;
     resizeCanvases(image.width, image.height);
     renderAll();
+    analytics()?.resetSession();
+    analytics()?.setDetectSource("upload");
+    analytics()?.trackUpload();
     await finishImageProcessing();
   } catch (error) {
     console.error(error);
@@ -1690,6 +1708,8 @@ function setupCanvasInteractions() {
 
 function setupControlEvents() {
   refs.detectBtn.addEventListener("click", () => {
+    analytics()?.setDetectSource("button");
+    analytics()?.trackAutoClick();
     detectFaces({ enableEditAfter: true });
   });
 
