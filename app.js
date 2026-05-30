@@ -747,6 +747,119 @@ function renderAll() {
   syncControlsForSelection();
 }
 
+function sanitizeDownloadBaseName(name) {
+  const cleaned = String(name || "facetoemoji")
+    .replace(/[/\\?%*:|"<>]/g, "_")
+    .replace(/\s+/g, "-")
+    .trim();
+  return cleaned.slice(0, 80) || "facetoemoji";
+}
+
+function isIosDevice() {
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/i.test(ua)) {
+    return true;
+  }
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve) => {
+    if (!canvas.width || !canvas.height) {
+      resolve(null);
+      return;
+    }
+    canvas.toBlob((blob) => resolve(blob), "image/png", 1);
+  });
+}
+
+function triggerAnchorDownload(url, fileName) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function openBlobInNewTab(url) {
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (opened) {
+    return true;
+  }
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  return true;
+}
+
+async function downloadEditedImage() {
+  if (!state.image) {
+    setStatus("No edited image to download yet.", true);
+    return;
+  }
+
+  drawPreview();
+  const fileName = `${sanitizeDownloadBaseName(state.fileName)}-facetoemoji.png`;
+  setStatus("Preparing download...");
+
+  let blob;
+  try {
+    blob = await canvasToPngBlob(refs.previewCanvas);
+  } catch (error) {
+    console.error(error);
+    setStatus("Could not export image. Try a smaller photo.", true);
+    return;
+  }
+
+  if (!blob) {
+    setStatus("Could not export image. Try a smaller photo.", true);
+    return;
+  }
+
+  const file = new File([blob], fileName, { type: "image/png" });
+
+  if (isIosDevice() && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "FaceToEmoji" });
+      setStatus("Tap Save Image in the share sheet.");
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        setStatus("Share cancelled.");
+        return;
+      }
+      console.warn("navigator.share failed", error);
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+
+  try {
+    if (!isIosDevice()) {
+      triggerAnchorDownload(url, fileName);
+      URL.revokeObjectURL(url);
+      setStatus("Download started.");
+      return;
+    }
+
+    openBlobInNewTab(url);
+    setStatus("Image opened — long-press and choose Save Image.");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    console.error(error);
+    setStatus("Download failed. Try again.", true);
+  }
+}
+
+
 async function detectFaces({ enableEditAfter = false } = {}) {
   const ready = await ensureModelsReady();
   if (!ready) {
@@ -1464,15 +1577,7 @@ function setupControlEvents() {
   });
 
   refs.downloadBtn.addEventListener("click", () => {
-    if (!state.image) {
-      setStatus("No edited image to download yet.", true);
-      return;
-    }
-    drawPreview();
-    const link = document.createElement("a");
-    link.href = refs.previewCanvas.toDataURL("image/png");
-    link.download = `${state.fileName}-facetoemoji.png`;
-    link.click();
+    void downloadEditedImage();
   });
 }
 
