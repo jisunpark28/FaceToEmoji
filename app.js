@@ -18,6 +18,8 @@ const SSD_DETECTION_PASSES = [
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
+const MAX_IMAGE_LONG_EDGE_MOBILE = 1280;
+
 const MIN_STICKER_DRAG_SIZE = 12;
 
 const expressionToEmoji = {
@@ -54,6 +56,8 @@ const state = {
   defaultEmoji: "🙂",
   defaultOpacity: 1,
   defaultSize: 1,
+  isProcessing: false,
+  processingGeneration: 0,
 };
 
 const refs = {
@@ -227,7 +231,38 @@ function dedupeDetectionCandidates(candidates) {
   return kept;
 }
 
+
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+}
+
+function normalizeImageForProcessing(image) {
+  if (!isMobileLayout()) {
+    return image;
+  }
+
+  const longEdge = Math.max(image.width, image.height);
+  if (longEdge <= MAX_IMAGE_LONG_EDGE_MOBILE) {
+    return image;
+  }
+
+  const scale = MAX_IMAGE_LONG_EDGE_MOBILE / longEdge;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return image;
+  }
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 function shouldRunEnhancedDetection(image, baselineCount) {
+  if (isMobileLayout()) {
+    return baselineCount === 0;
+  }
+
   const longEdge = Math.max(image.width, image.height);
   const shortEdge = Math.max(1, Math.min(image.width, image.height));
   const aspectRatio = longEdge / shortEdge;
@@ -390,7 +425,11 @@ function syncQuickUploadHint() {
   if (hasImage) {
     refs.canvasContainer.removeAttribute("role");
     refs.canvasContainer.removeAttribute("tabindex");
-    refs.canvasStage.style.width = "100%";
+    if (isMobileLayout()) {
+      syncCanvasStageSize(state.image.width);
+    } else {
+      refs.canvasStage.style.width = "100%";
+    }
   } else {
     refs.canvasContainer.setAttribute("role", "button");
     refs.canvasContainer.setAttribute("tabindex", "0");
@@ -500,6 +539,9 @@ function resizeCanvases(width, height) {
 }
 
 function clearLoadedImage() {
+  if (isMobileLayout() && state.isProcessing) {
+    return;
+  }
   state.image = null;
   state.fileName = "facetoemoji";
   state.faces = [];
@@ -688,23 +730,31 @@ async function detectFaces({ enableEditAfter = false } = {}) {
 
     const baseline = dedupeDetectionCandidates(candidates);
     if (shouldRunEnhancedDetection(state.image, baseline.length)) {
-      const upscaled = buildUpscaledSource(state.image);
-      if (upscaled) {
-        const tinyUpscaled = await runTinyDetectionPasses(upscaled.canvas, upscaled.scale, 0);
-        candidates = candidates.concat(tinyUpscaled);
+      if (isMobileLayout()) {
+        const mirrored = buildMirroredSource(state.image);
+        if (mirrored) {
+          const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
+          candidates = candidates.concat(tinyMirrored);
+        }
+      } else {
+        const upscaled = buildUpscaledSource(state.image);
+        if (upscaled) {
+          const tinyUpscaled = await runTinyDetectionPasses(upscaled.canvas, upscaled.scale, 0);
+          candidates = candidates.concat(tinyUpscaled);
 
-        const ssdUpscaled = await runSsdDetectionPasses(upscaled.canvas, upscaled.scale, 0);
-        candidates = candidates.concat(ssdUpscaled);
+          const ssdUpscaled = await runSsdDetectionPasses(upscaled.canvas, upscaled.scale, 0);
+          candidates = candidates.concat(ssdUpscaled);
+        }
+
+        const mirrored = buildMirroredSource(state.image);
+        if (mirrored) {
+          const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
+          candidates = candidates.concat(tinyMirrored);
+        }
+
+        const ssdBase = await runSsdDetectionPasses(state.image, 1, 0);
+        candidates = candidates.concat(ssdBase);
       }
-
-      const mirrored = buildMirroredSource(state.image);
-      if (mirrored) {
-        const tinyMirrored = await runTinyDetectionPasses(mirrored, 1, state.image.width);
-        candidates = candidates.concat(tinyMirrored);
-      }
-
-      const ssdBase = await runSsdDetectionPasses(state.image, 1, 0);
-      candidates = candidates.concat(ssdBase);
     }
 
     const merged = dedupeDetectionCandidates(candidates);
@@ -831,10 +881,26 @@ async function onFileSelected(file) {
     setStatus("Please upload an image file.", true);
     return;
   }
+  const onMobile = isMobileLayout();
+  if (onMobile && state.isProcessing) {
+    return;
+  }
+
+  const generation = onMobile ? ++state.processingGeneration : 0;
+  if (onMobile) {
+    state.isProcessing = true;
+  }
 
   try {
     setStatus("Loading image...");
-    const image = await loadImageFromFile(file);
+    let image = await loadImageFromFile(file);
+    if (onMobile && generation !== state.processingGeneration) {
+      return;
+    }
+    image = normalizeImageForProcessing(image);
+    if (onMobile && generation !== state.processingGeneration) {
+      return;
+    }
     state.image = image;
     state.fileName = file.name.replace(/\.[^.]+$/, "") || "facetoemoji";
     state.faces = [];
@@ -848,6 +914,9 @@ async function onFileSelected(file) {
     setStatus("Image upload failed.", true);
   } finally {
     refs.imageInput.value = "";
+    if (onMobile && generation === state.processingGeneration) {
+      state.isProcessing = false;
+    }
   }
 }
 
@@ -857,6 +926,9 @@ function setupTitleReset() {
   }
 
   refs.titleResetBtn.addEventListener("click", () => {
+    if (isMobileLayout() && state.isProcessing) {
+      return;
+    }
     clearLoadedImage();
   });
 }
@@ -874,7 +946,7 @@ function setupQuickUploadArea() {
 
   refs.removeImageBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (!state.image) {
+    if (!state.image || (isMobileLayout() && state.isProcessing)) {
       return;
     }
     clearLoadedImage();
