@@ -45,7 +45,7 @@ test("app.js lazy-loads face-api with Subresource Integrity", () => {
 test("index.html targets face to emoji keywords in title and hero", () => {
   assert.match(html, /<title>Face to Emoji/i);
   assert.match(html, /name="description"[^>]*face to emoji/i);
-  assert.match(html, /<h1>Face to Emoji/i);
+  assert.match(html, /titleResetBtn[\s\S]*Face to Emoji/i);
   assert.match(html, /getfacetoemoji\.com/i);
 });
 
