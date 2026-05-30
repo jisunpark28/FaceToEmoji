@@ -19,8 +19,8 @@ const SSD_DETECTION_PASSES = [
   { minConfidence: 0.15, maxResults: 220 },
 ];
 const MIN_FACE_BOX_SIZE = 10;
-const MAX_IMAGE_LONG_EDGE_MOBILE = 960;
-const MAX_MOBILE_MEGAPIXELS = 0.9;
+const MAX_IMAGE_LONG_EDGE_MOBILE = 720;
+const MAX_MOBILE_MEGAPIXELS = 0.7;
 
 const MIN_STICKER_DRAG_SIZE = 12;
 
@@ -143,6 +143,14 @@ function pickExpression(expressions = {}) {
   });
 
   return chosen;
+}
+
+function getStickerEmojiForDetection(det) {
+  if (isMobileLayout()) {
+    return BLUR_CIRCLE_VALUE;
+  }
+  const expression = pickExpression(det.expressions);
+  return expressionToEmoji[expression] || state.defaultEmoji;
 }
 
 function normalizeDetectionEntry(det, sourceScale = 1, mirroredWidth = 0) {
@@ -756,7 +764,8 @@ function boxBlurImageData(imageData, width, height, radius) {
     }
   };
 
-  for (let pass = 0; pass < 3; pass += 1) {
+  const blurPasses = isMobileLayout() ? 2 : 3;
+  for (let pass = 0; pass < blurPasses; pass += 1) {
     blurHorizontal(channel, tmp);
     blurVertical(tmp, channel);
   }
@@ -1050,7 +1059,9 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     return;
   }
 
-  setStatus(isMobileLayout() ? "Detecting faces (mobile mode)..." : "Detecting faces...");
+  setStatus(
+    isMobileLayout() ? "Detecting faces and applying blur..." : "Detecting faces...",
+  );
   try {
     let candidates = await runTinyDetectionPasses(state.image, 1, 0);
     if (isMobileLayout()) {
@@ -1089,8 +1100,8 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     const merged = dedupeDetectionCandidates(candidates);
 
     state.faces = merged.map((det) => {
-      const expression = pickExpression(det.expressions);
-      const emoji = expressionToEmoji[expression] || state.defaultEmoji;
+      const expression = isMobileLayout() ? "neutral" : pickExpression(det.expressions);
+      const emoji = getStickerEmojiForDetection(det);
       return createFace({
         box: det.box,
         expression,
@@ -1107,6 +1118,9 @@ async function detectFaces({ enableEditAfter = false } = {}) {
       if (enableEditAfter) {
         setEditMode(true);
         setStatus("No faces detected. Edit mode is on — drag on the image to add a sticker.");
+      } else if (isMobileLayout()) {
+        setEditMode(true);
+        setStatus("No faces detected. Edit mode is on — drag on the image to add blur.");
       } else {
         setStatus("No faces detected. Turn on Edit and drag to add one manually.");
       }
@@ -1116,6 +1130,10 @@ async function detectFaces({ enableEditAfter = false } = {}) {
     if (enableEditAfter) {
       setEditMode(true);
       setStatus(`Auto detected ${state.faces.length} face(s). Edit mode is on — drag stickers to adjust.`);
+    } else if (isMobileLayout()) {
+      setStatus(
+        `Blurred ${state.faces.length} face(s). Tap Download, or Edit to adjust stickers.`,
+      );
     } else {
       setStatus(`Auto detected ${state.faces.length} face(s).`);
     }
@@ -1221,7 +1239,7 @@ async function finishImageProcessing() {
     return;
   }
 
-  await detectFaces({ enableEditAfter: true });
+  await detectFaces({ enableEditAfter: !isMobileLayout() });
 }
 
 async function onFileSelected(file) {
@@ -1797,7 +1815,7 @@ async function loadModels() {
     state.modelsReady = true;
     setStatus(
       isMobileLayout()
-        ? "Models ready. Mobile uses lighter detection."
+        ? "Models ready. Upload a photo — faces blur automatically."
         : "Models ready. Quick upload in Live Preview.",
     );
 
@@ -1883,6 +1901,9 @@ async function init() {
   appInitialized = true;
 
   refs.canvasStage.style.width = "100%";
+  if (isMobileLayout()) {
+    state.defaultEmoji = BLUR_CIRCLE_VALUE;
+  }
   refs.emojiSelect.value = state.defaultEmoji;
   refs.editBtn.classList.remove("active");
   updateOverlayCursor();
